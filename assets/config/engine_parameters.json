@@ -1,0 +1,79 @@
+{
+  "remote": [
+    { "key": "load_kw", "label": "Load", "unit": "kW", "inputType": "number", "min": 0, "max": 1000, "group": "Generator Output" },
+
+    { "key": "tc_outlet_temp", "label": "Outlet Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 700, "group": "Turbocharger" },
+    { "key": "tc_inlet_temp", "label": "Inlet Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 700, "group": "Turbocharger" },
+
+    { "key": "exh_temp_mean", "label": "Mean", "unit": "°C", "inputType": "number", "min": 0, "max": 700, "group": "Cylinder Exhaust Temp" },
+    { "key": "exh_temp_cyl1", "label": "Cyl 1", "unit": "°C", "inputType": "number", "min": 0, "max": 700, "group": "Cylinder Exhaust Temp" },
+    { "key": "exh_temp_cyl2", "label": "Cyl 2", "unit": "°C", "inputType": "number", "min": 0, "max": 700, "group": "Cylinder Exhaust Temp" },
+    { "key": "exh_temp_cyl3", "label": "Cyl 3", "unit": "°C", "inputType": "number", "min": 0, "max": 700, "group": "Cylinder Exhaust Temp" },
+    { "key": "exh_temp_cyl4", "label": "Cyl 4", "unit": "°C", "inputType": "number", "min": 0, "max": 700, "group": "Cylinder Exhaust Temp" },
+    { "key": "exh_temp_cyl5", "label": "Cyl 5", "unit": "°C", "inputType": "number", "min": 0, "max": 700, "group": "Cylinder Exhaust Temp" },
+    { "key": "exh_temp_cyl6", "label": "Cyl 6", "unit": "°C", "inputType": "number", "min": 0, "max": 700, "group": "Cylinder Exhaust Temp" },
+
+    { "key": "lo_press", "label": "LO Press", "unit": "MPa", "inputType": "number", "min": 0, "max": 2, "group": "Lubrication & Cooling" },
+    { "key": "lo_temp", "label": "LO Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 150, "group": "Lubrication & Cooling" },
+    { "key": "cfw_out_temp", "label": "CFW Out Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 150, "group": "Lubrication & Cooling" },
+    { "key": "cfw_in_press", "label": "CFW In Press", "unit": "MPa", "inputType": "number", "min": 0, "max": 2, "group": "Lubrication & Cooling" },
+    { "key": "fo_press", "label": "FO Press", "unit": "MPa", "inputType": "number", "min": 0, "max": 2, "group": "Lubrication & Cooling" },
+    { "key": "fo_temp", "label": "FO Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 200, "group": "Lubrication & Cooling" },
+    { "key": "start_air_press", "label": "Start Air Press", "unit": "MPa", "inputType": "number", "min": 0, "max": 3, "group": "Lubrication & Cooling" },
+
+    { "key": "winding_temp_w", "label": "Winding Temp W", "unit": "°C", "inputType": "number", "min": 0, "max": 200, "group": "Alternator" },
+    { "key": "winding_temp_v", "label": "Winding Temp V", "unit": "°C", "inputType": "number", "min": 0, "max": 200, "group": "Alternator" },
+    { "key": "winding_temp_u", "label": "Winding Temp U", "unit": "°C", "inputType": "number", "min": 0, "max": 200, "group": "Alternator" },
+    { "key": "cooling_air_temp", "label": "Cooling Air Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 100, "group": "Alternator" },
+    { "key": "bearing_temp", "label": "Bearing Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 150, "group": "Alternator" },
+
+    { "key": "cfw_inlet_valve", "label": "C.F.W. Inlet Valve", "unit": "", "inputType": "status", "options": ["OK", "FAIL"], "group": "Status Indicators" },
+    { "key": "lo_filter_diff_press", "label": "LO Filter Diff Press", "unit": "", "inputType": "status", "options": ["NORMAL", "PAH"], "group": "Status Indicators" },
+    { "key": "fo_filter_diff_press", "label": "FO Filter Diff Press", "unit": "", "inputType": "status", "options": ["NORMAL", "PAH"], "group": "Status Indicators" },
+    { "key": "pre_lo", "label": "Pre. L.O.", "unit": "", "inputType": "status", "options": ["NORMAL", "LAL"], "group": "Status Indicators" },
+    { "key": "lo_sump_tank", "label": "LO Sump Tank", "unit": "", "inputType": "status", "options": ["NORMAL", "LAL"], "group": "Status Indicators" }
+  ],
+  "local": [
+    { "key": "loc_jcw_out_u1", "label": "Unit 1", "unit": "°C", "inputType": "number", "min": 0, "max": 120, "group": "JCW Outlet Temp" },
+    { "key": "loc_jcw_out_u2", "label": "Unit 2", "unit": "°C", "inputType": "number", "min": 0, "max": 120, "group": "JCW Outlet Temp" },
+    { "key": "loc_jcw_out_u3", "label": "Unit 3", "unit": "°C", "inputType": "number", "min": 0, "max": 120, "group": "JCW Outlet Temp" },
+    { "key": "loc_jcw_out_u4", "label": "Unit 4", "unit": "°C", "inputType": "number", "min": 0, "max": 120, "group": "JCW Outlet Temp" },
+    { "key": "loc_jcw_out_u5", "label": "Unit 5", "unit": "°C", "inputType": "number", "min": 0, "max": 120, "group": "JCW Outlet Temp" },
+    { "key": "loc_jcw_out_u6", "label": "Unit 6", "unit": "°C", "inputType": "number", "min": 0, "max": 120, "group": "JCW Outlet Temp" },
+
+    { "key": "loc_exh_out_u1", "label": "Unit 1", "unit": "°C", "inputType": "number", "min": 0, "max": 700, "group": "Exhaust Outlet Temp" },
+    { "key": "loc_exh_out_u2", "label": "Unit 2", "unit": "°C", "inputType": "number", "min": 0, "max": 700, "group": "Exhaust Outlet Temp" },
+    { "key": "loc_exh_out_u3", "label": "Unit 3", "unit": "°C", "inputType": "number", "min": 0, "max": 700, "group": "Exhaust Outlet Temp" },
+    { "key": "loc_exh_out_u4", "label": "Unit 4", "unit": "°C", "inputType": "number", "min": 0, "max": 700, "group": "Exhaust Outlet Temp" },
+    { "key": "loc_exh_out_u5", "label": "Unit 5", "unit": "°C", "inputType": "number", "min": 0, "max": 700, "group": "Exhaust Outlet Temp" },
+    { "key": "loc_exh_out_u6", "label": "Unit 6", "unit": "°C", "inputType": "number", "min": 0, "max": 700, "group": "Exhaust Outlet Temp" },
+
+    { "key": "loc_ae_lo_cooler_inlet_temp", "label": "AE LO Cooler Inlet Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 150, "group": "Lubrication" },
+    { "key": "loc_lo_inlet_press", "label": "LO Inlet Press", "unit": "MPa", "inputType": "number", "min": 0, "max": 2, "group": "Lubrication" },
+    { "key": "loc_lo_inlet_press_bef_tc", "label": "LO Inlet Press Bef TC", "unit": "MPa", "inputType": "number", "min": 0, "max": 2, "group": "Lubrication" },
+    { "key": "loc_nozzle_cooling_lo_inlet_press", "label": "Nozzle Cooling LO Inlet Press", "unit": "MPa", "inputType": "number", "min": 0, "max": 2, "group": "Lubrication" },
+    { "key": "loc_lo_temp", "label": "LO Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 150, "group": "Lubrication" },
+
+    { "key": "loc_ht_cw_inlet_press", "label": "HT CW Inlet Press", "unit": "MPa", "inputType": "number", "min": 0, "max": 2, "group": "Cooling Water" },
+    { "key": "loc_lt_cw_inlet_press", "label": "LT CW Inlet Press", "unit": "MPa", "inputType": "number", "min": 0, "max": 2, "group": "Cooling Water" },
+    { "key": "loc_ht_pump_inlet_temp", "label": "HT Pump Inlet Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 150, "group": "Cooling Water" },
+    { "key": "loc_air_clr_cw_in_temp", "label": "Air Clr CW In Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 100, "group": "Cooling Water" },
+    { "key": "loc_air_clr_cw_out_temp", "label": "Air Clr CW Out Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 100, "group": "Cooling Water" },
+    { "key": "loc_gen_clr_cw_in_temp", "label": "Generator Clr CW In Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 100, "group": "Cooling Water" },
+    { "key": "loc_gen_clr_cw_out_temp", "label": "Generator Clr CW Out Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 100, "group": "Cooling Water" },
+
+    { "key": "loc_charge_air_press", "label": "Charge Air Press", "unit": "MPa", "inputType": "number", "min": 0, "max": 5, "group": "Charge Air & Turbocharger" },
+    { "key": "loc_charge_air_clr_inlet_temp", "label": "Charge Air Clr Inlet Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 150, "group": "Charge Air & Turbocharger" },
+    { "key": "loc_tc_exh_gas_inlet_temp", "label": "TC Exhaust Gas Inlet Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 700, "group": "Charge Air & Turbocharger" },
+    { "key": "loc_tc_exh_gas_outlet_temp", "label": "TC Exhaust Gas Outlet Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 700, "group": "Charge Air & Turbocharger" },
+
+    { "key": "loc_fo_inlet_press", "label": "FO Inlet Press", "unit": "MPa", "inputType": "number", "min": 0, "max": 2, "group": "Fuel & Starting Air" },
+    { "key": "loc_starting_air_press", "label": "Starting Air Press", "unit": "MPa", "inputType": "number", "min": 0, "max": 3, "group": "Fuel & Starting Air" },
+    { "key": "loc_fo_viscosity", "label": "Fuel Oil Viscosity", "unit": "cSt", "inputType": "number", "min": 0, "max": 100, "group": "Fuel & Starting Air" },
+
+    { "key": "loc_current_amps", "label": "Current", "unit": "Amps", "inputType": "number", "min": 0, "max": 2000, "group": "Generator & Running Data" },
+    { "key": "loc_ped_brg_temp", "label": "Fwd/Aft Pedestal Brg Temp", "unit": "°C", "inputType": "number", "min": 0, "max": 150, "group": "Generator & Running Data" },
+    { "key": "loc_sump_pct", "label": "Sump", "unit": "%", "inputType": "number", "min": 0, "max": 100, "group": "Generator & Running Data" },
+    { "key": "loc_running_hours", "label": "Running Hours", "unit": "hrs", "inputType": "number", "min": 0, "max": 200000, "group": "Generator & Running Data" }
+  ]
+}

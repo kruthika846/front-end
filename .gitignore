@@ -1,0 +1,19 @@
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+.idea/
+*.iml
+android/local.properties
+android/.gradle/
+android/.kotlin/
+android/app/debug
+android/app/profile
+android/app/release
+ios/Flutter/Flutter.podspec
+ios/Pods/
+ios/.symlinks/
+
+# Claude Code's own session/tooling state — not part of the app
+.claude/
