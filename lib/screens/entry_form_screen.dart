@@ -8,6 +8,8 @@ import '../models/param_definition.dart';
 import '../providers/entry_form_provider.dart';
 import '../providers/history_provider.dart';
 import '../providers/repository_providers.dart';
+import '../providers/session_provider.dart';
+import '../services/biometric_auth.dart';
 import '../theme/app_colors.dart';
 import '../widgets/dynamic_param_field.dart';
 import '../widgets/edit_value_dialog.dart';
@@ -15,7 +17,6 @@ import '../widgets/engine_diagram.dart';
 import '../widgets/gauge_dial.dart';
 import '../widgets/panel_comment_field.dart';
 import '../widgets/photo_upload_field.dart';
-import '../widgets/signature_pad_field.dart';
 
 class EntryFormScreen extends ConsumerStatefulWidget {
   final int generatorNumber;
@@ -50,11 +51,20 @@ class _EntryFormScreenState extends ConsumerState<EntryFormScreen> {
       return;
     }
 
-    if (formState.signaturePath == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Signature is required before submitting')),
-      );
-      return;
+    if (!formState.biometricVerified) {
+      // Only hard-block when this device is actually capable of biometric
+      // auth — a test device with no fingerprint/face hardware shouldn't
+      // make the rest of the app unusable. The entry is still saved as
+      // genuinely unverified (never faked) when this bypass applies.
+      final unavailable = await BiometricAuth.unavailableReason();
+      if (unavailable == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Verify your identity (fingerprint/face) before submitting')),
+          );
+        }
+        return;
+      }
     }
 
     final categoryByKey = <String, ParamCategory>{
@@ -69,10 +79,11 @@ class _EntryFormScreenState extends ConsumerState<EntryFormScreen> {
       readingSlot: formState.readingSlot,
       timestamp: DateTime.now(),
       notes: formState.notes,
-      signaturePath: formState.signaturePath,
       photoPath: formState.photoPath,
       pdfPath: formState.pdfPath,
       hmiPhotoPath: formState.hmiPhotoPath,
+      operatorName: ref.read(currentOperatorProvider),
+      biometricVerified: formState.biometricVerified,
       paramValues: formState.values,
       paramPhotos: formState.paramPhotos,
     );
@@ -128,10 +139,10 @@ class _EntryFormScreenState extends ConsumerState<EntryFormScreen> {
                   children: [PhotoUploadField(entryId: _entryId, showLabel: false)],
                 ),
                 const SizedBox(height: 16),
-                _Section(
-                  icon: Icons.draw_outlined,
-                  title: 'Operator Signature',
-                  children: [SignaturePadField(entryId: _entryId, showLabel: false)],
+                const _Section(
+                  icon: Icons.fingerprint,
+                  title: 'Biometric Authentication',
+                  children: [_BiometricAuthField()],
                 ),
                 const SizedBox(height: 28),
                 _SubmitButton(onPressed: () => _submit(config.remoteParams, config.localParams)),
@@ -144,9 +155,10 @@ class _EntryFormScreenState extends ConsumerState<EntryFormScreen> {
   }
 }
 
-/// Explicit Time/Noon selector — which of the day's two paper-log columns
-/// this entry is for. The operator picks this instead of the app guessing
-/// from the clock, so a reading taken late still lands in the right column.
+/// Which of the day's two paper-log columns this entry is for — 'time' or
+/// 'noon'. The exact 24-hour timestamp shown on the Daily Log comes from
+/// the moment of submission itself (see _submit), not a separate field
+/// here — this dropdown only decides which column it lands in.
 class _ReadingSlotSelector extends ConsumerWidget {
   const _ReadingSlotSelector();
 
@@ -185,6 +197,106 @@ class _ReadingSlotSelector extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Replaces the old drawn-signature requirement — submitting now requires
+/// a real device fingerprint/face check, tying the entry to whoever is
+/// actually signed in rather than a hand-drawn mark anyone could imitate.
+class _BiometricAuthField extends ConsumerStatefulWidget {
+  const _BiometricAuthField();
+
+  @override
+  ConsumerState<_BiometricAuthField> createState() => _BiometricAuthFieldState();
+}
+
+class _BiometricAuthFieldState extends ConsumerState<_BiometricAuthField> {
+  bool _checking = false;
+  String? _unavailableReason;
+
+  Future<void> _authenticate() async {
+    setState(() {
+      _checking = true;
+      _unavailableReason = null;
+    });
+
+    final unavailable = await BiometricAuth.unavailableReason();
+    if (unavailable != null) {
+      if (mounted) setState(() => _checking = false);
+      setState(() => _unavailableReason = unavailable);
+      return;
+    }
+
+    final operator = ref.read(currentOperatorProvider) ?? 'operator';
+    final ok = await BiometricAuth.authenticate(
+      'Verify your identity to submit this logbook entry as $operator',
+    );
+
+    if (!mounted) return;
+    setState(() => _checking = false);
+    if (ok) {
+      ref.read(entryFormProvider.notifier).setBiometricVerified(true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Biometric verification failed or was cancelled')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final verified = ref.watch(entryFormProvider.select((s) => s.biometricVerified));
+    final operator = ref.watch(currentOperatorProvider);
+
+    if (verified) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.good.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.good.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.verified_user, color: AppColors.good, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Verified — ${operator ?? 'Operator'}',
+                style: const TextStyle(color: AppColors.good, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        OutlinedButton.icon(
+          onPressed: _checking ? null : _authenticate,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.cyan,
+            side: const BorderSide(color: AppColors.cyan),
+            minimumSize: const Size(double.infinity, 48),
+          ),
+          icon: _checking
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.cyan),
+                )
+              : const Icon(Icons.fingerprint),
+          label: Text(_checking ? 'Checking…' : 'Verify Identity to Submit'),
+        ),
+        if (_unavailableReason != null) ...[
+          const SizedBox(height: 8),
+          Text(_unavailableReason!, style: const TextStyle(color: AppColors.alarm, fontSize: 12.5)),
+        ],
+      ],
     );
   }
 }
@@ -453,6 +565,10 @@ class _ExpandableChipGroup extends ConsumerWidget {
         child: Material(
           type: MaterialType.transparency,
           child: ExpansionTile(
+            // Starts open — these feed directly into Daily Log Max/Min
+            // rows, so a collapsed-by-default panel is too easy to submit
+            // past without noticing it's still empty.
+            initiallyExpanded: true,
             tilePadding: const EdgeInsets.symmetric(horizontal: 14),
             childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
             iconColor: group.color,

@@ -59,11 +59,16 @@ class GaugeDial extends ConsumerWidget {
       fraction = ((parsed - definition.min!) / (definition.max! - definition.min!)).clamp(0.0, 1.0);
     }
 
-    // Only surface an error once the operator has actually typed something —
-    // an untouched blank field shouldn't flash red before they've had a
+    // Only surface a message once the operator has actually typed something
+    // — an untouched blank field shouldn't flash red before they've had a
     // chance to fill it in. A submit attempt on a still-blank field is
-    // caught separately by the form's overall validator.
-    final fieldError = value.isEmpty ? null : definition.validateValue(value);
+    // caught separately by the form's overall validator. typeError can
+    // still block Submit (not a real number); rangeWarning never does —
+    // it's just a flag that this reading is outside the configured normal
+    // range, so it's easy to spot and explain with a panel comment.
+    final typeError = value.isEmpty ? null : definition.validateValue(value);
+    final rangeWarning = definition.rangeWarning(value);
+    final fieldError = typeError ?? rangeWarning;
     final ringColor = fieldError != null ? AppColors.alarm : accent;
 
     return SizedBox(

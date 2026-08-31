@@ -36,6 +36,8 @@ class EntryDetailScreen extends ConsumerWidget {
               Text(entry.engineId, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
               Text(dateFormat.format(entry.timestamp), style: const TextStyle(color: AppColors.textMuted)),
+              const SizedBox(height: 12),
+              _VerificationBadge(entry: entry),
               const SizedBox(height: 20),
               if (remoteGroups.isNotEmpty) ...[
                 const _SectionTitle(icon: Icons.satellite_alt, text: 'Remote Parameters', color: AppColors.cyan),
@@ -112,6 +114,53 @@ class EntryDetailScreen extends ConsumerWidget {
       }
     }
     return result;
+  }
+}
+
+/// Proof of who submitted this entry and how — a real biometric check
+/// (current entries) or, for entries saved before that existed, the old
+/// drawn signature further down the page. Never both are "unverified" for
+/// a legitimately-submitted entry, so this always has something to show.
+class _VerificationBadge extends StatelessWidget {
+  final LogbookEntry entry;
+  const _VerificationBadge({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    if (entry.biometricVerified) {
+      return _badge(
+        icon: Icons.verified_user,
+        color: AppColors.good,
+        text: 'Biometrically verified — ${entry.operatorName ?? 'operator'}',
+      );
+    }
+    if (entry.signaturePath != null) {
+      return _badge(
+        icon: Icons.draw_outlined,
+        color: AppColors.textMuted,
+        text: 'Signed (legacy entry — see signature below)',
+      );
+    }
+    return _badge(icon: Icons.help_outline, color: AppColors.alarm, text: 'No verification on record');
+  }
+
+  Widget _badge({required IconData icon, required Color color, required String text}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 15),
+          const SizedBox(width: 6),
+          Text(text, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12.5)),
+        ],
+      ),
+    );
   }
 }
 

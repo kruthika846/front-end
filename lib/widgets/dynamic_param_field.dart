@@ -113,6 +113,13 @@ class _GaugeChip extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Non-blocking — a value outside min/max is a real reading a logbook
+    // needs to capture (e.g. an alarm condition), not something to reject.
+    // This only flags it visually so it's easy to spot and explain with a
+    // panel comment; Submit is never blocked by it.
+    final rangeWarning = definition.rangeWarning(initialValue);
+    final barColor = rangeWarning != null ? AppColors.alarm : accent;
+
     return SizedBox(
       width: 152,
       child: Container(
@@ -120,73 +127,89 @@ class _GaugeChip extends ConsumerWidget {
         decoration: BoxDecoration(
           color: AppColors.ink800,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: accent.withValues(alpha: 0.28)),
+          border: Border.all(color: barColor.withValues(alpha: 0.28)),
         ),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 4,
-              height: 34,
-              margin: const EdgeInsets.only(right: 10),
-              decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(4)),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    definition.label.toUpperCase(),
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          letterSpacing: 0.3,
-                          color: AppColors.textMuted,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 9.5,
-                        ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+            Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 34,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(color: barColor, borderRadius: BorderRadius.circular(4)),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
-                        child: TextFormField(
-                          initialValue: initialValue,
-                          keyboardType: keyboardType,
-                          style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700, fontSize: 16),
-                          textAlignVertical: TextAlignVertical.center,
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            border: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                            errorStyle: TextStyle(fontSize: 9, height: 0.9, color: AppColors.alarm),
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                          onChanged: onChanged,
-                          validator: validator,
-                        ),
+                      Text(
+                        definition.label.toUpperCase(),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              letterSpacing: 0.3,
+                              color: AppColors.textMuted,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 9.5,
+                            ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      if (definition.unit.isNotEmpty) ...[
-                        const SizedBox(width: 4),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 3),
-                          child: Text(definition.unit, style: const TextStyle(color: AppColors.textFaint, fontSize: 11)),
-                        ),
-                      ],
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              initialValue: initialValue,
+                              keyboardType: keyboardType,
+                              style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700, fontSize: 16),
+                              textAlignVertical: TextAlignVertical.center,
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                errorStyle: TextStyle(fontSize: 9, height: 0.9, color: AppColors.alarm),
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                              onChanged: onChanged,
+                              validator: validator,
+                            ),
+                          ),
+                          if (definition.unit.isNotEmpty) ...[
+                            const SizedBox(width: 4),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 3),
+                              child: Text(definition.unit, style: const TextStyle(color: AppColors.textFaint, fontSize: 11)),
+                            ),
+                          ],
+                        ],
+                      ),
                     ],
                   ),
-                ],
+                ),
+                IconButton(
+                  icon: const Icon(Icons.edit, size: 14),
+                  color: accent,
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => showEditValueDialog(context, ref, definition),
+                ),
+              ],
+            ),
+            if (rangeWarning != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 14, right: 4, top: 3),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    rangeWarning,
+                    style: const TextStyle(fontSize: 9, color: AppColors.alarm, fontWeight: FontWeight.w700),
+                  ),
+                ),
               ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.edit, size: 14),
-              color: accent,
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              onPressed: () => showEditValueDialog(context, ref, definition),
-            ),
           ],
         ),
       ),

@@ -23,7 +23,7 @@ class AppDatabase {
     final path = join(dbPath, 'logbridge.db');
     return openDatabase(
       path,
-      version: 6,
+      version: 7,
       onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, version) async {
         await db.execute('''
@@ -38,6 +38,8 @@ class AppDatabase {
             photo_path TEXT,
             pdf_path TEXT,
             hmi_photo_path TEXT,
+            operator_name TEXT,
+            biometric_verified INTEGER NOT NULL DEFAULT 0,
             synced INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL
           )
@@ -100,6 +102,16 @@ class AppDatabase {
           // than guessed from the clock. NULL on legacy rows; the daily log
           // table falls back to the old hour-based guess for those.
           await db.execute('ALTER TABLE logbook_entries ADD COLUMN reading_slot TEXT');
+        }
+        if (oldVersion < 7) {
+          // Submission moved from a drawn signature to a real device
+          // biometric check (fingerprint/face) — operator_name records WHO
+          // authenticated (from the signed-in session), biometric_verified
+          // records THAT it happened. Legacy rows default to unverified;
+          // their old signature_path (still on the table, untouched) is
+          // what proves those specific entries.
+          await db.execute('ALTER TABLE logbook_entries ADD COLUMN operator_name TEXT');
+          await db.execute('ALTER TABLE logbook_entries ADD COLUMN biometric_verified INTEGER NOT NULL DEFAULT 0');
         }
       },
     );

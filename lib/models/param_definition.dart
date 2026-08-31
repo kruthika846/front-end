@@ -59,18 +59,33 @@ class ParamDefinition {
     }
   }
 
-  /// The one place numeric validation happens — every number field on the
-  /// form (remote gauge chips, local gauge dials, the load readout) shares
-  /// this so "reject a bad reading" behaves identically everywhere instead
-  /// of drifting per-widget. Returns null when the value is acceptable, or
-  /// a short message to show the operator when it isn't.
+  /// The one place that can actually block Submit — every number field on
+  /// the form shares this. Only rejects a reading that can't possibly be
+  /// real (missing, or not a number at all). A value outside the
+  /// configured min/max is deliberately NOT rejected here: an alarm
+  /// condition or an out-of-range reading is exactly the kind of thing a
+  /// logbook exists to capture, not hide behind a blocked submit button.
+  /// See [rangeWarning] for the separate, non-blocking "flag it" signal.
   String? validateValue(String? v) {
     if (v == null || v.trim().isEmpty) return 'Required';
     if (inputType != ParamInputType.number) return null;
     final n = double.tryParse(v);
     if (n == null) return 'Not a number';
-    if (min != null && n < min!) return 'Min $min';
-    if (max != null && n > max!) return 'Max $max';
+    return null;
+  }
+
+  /// Purely informational — non-null when a numeric reading falls outside
+  /// the configured min/max. Never blocks submission; used only to flag
+  /// the reading visually (a red ring, a small note) so it's easy to spot
+  /// and explain with a panel comment, since a real onboard reading can
+  /// genuinely exceed the "normal" range.
+  String? rangeWarning(String? v) {
+    if (v == null || v.trim().isEmpty) return null;
+    if (inputType != ParamInputType.number) return null;
+    final n = double.tryParse(v);
+    if (n == null) return null;
+    if (min != null && n < min!) return 'Below min $min';
+    if (max != null && n > max!) return 'Above max $max';
     return null;
   }
 }

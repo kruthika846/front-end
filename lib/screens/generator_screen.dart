@@ -37,8 +37,8 @@ class GeneratorScreen extends StatelessWidget {
             child: DailyLogTable(generatorNumber: generatorNumber),
           ),
           LogTypeSection(
-            storageKey: 'generator_$generatorNumber::records',
-            title: 'Records',
+            storageKey: 'generator_$generatorNumber::watch_keeping',
+            title: 'Watch Keeping',
             icon: Icons.folder_open_outlined,
             accent: AppColors.teal,
             child: RecordsList(generatorNumber: generatorNumber),

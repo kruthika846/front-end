@@ -4,9 +4,10 @@ import 'generator_screen.dart';
 
 /// Engine Room department — one expandable section per piece of equipment
 /// (right now just Auxiliary Engine; Boiler, Purifier, etc. get added the
-/// same way later). Auxiliary Engine holds 4 generators, each with its own
-/// Daily Logs / Records / New Entry — Generator 1 carries over the logbook
-/// built so far, Generators 2-4 start empty.
+/// same way later). Auxiliary Engine holds Generators 1-3, each with its
+/// own Daily Logs / Records / New Entry — Generator 1 carries over the
+/// logbook built so far, Generators 2-3 start empty. Generator 4 is
+/// removed for now, per instruction.
 class EngineRoomScreen extends StatelessWidget {
   const EngineRoomScreen({super.key});
 
@@ -35,7 +36,9 @@ class EngineRoomScreen extends StatelessWidget {
               _GeneratorRow(generatorNumber: 1),
               _GeneratorRow(generatorNumber: 2),
               _GeneratorRow(generatorNumber: 3),
-              _GeneratorRow(generatorNumber: 4),
+              // Generator 4 removed for now, per instruction — the screen
+              // and DB support are still generic, so adding it back later
+              // is just re-adding this one row.
             ],
           ),
           SizedBox(height: 14),

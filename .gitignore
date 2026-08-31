@@ -17,3 +17,6 @@ ios/.symlinks/
 
 # Claude Code's own session/tooling state — not part of the app
 .claude/
+
+# Stray flutter run session logs
+flutter_*.log

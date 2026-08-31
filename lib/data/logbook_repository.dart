@@ -24,6 +24,8 @@ class LogbookRepository {
           'photo_path': entry.photoPath,
           'pdf_path': entry.pdfPath,
           'hmi_photo_path': entry.hmiPhotoPath,
+          'operator_name': entry.operatorName,
+          'biometric_verified': entry.biometricVerified ? 1 : 0,
           'synced': entry.synced ? 1 : 0,
           'created_at': DateTime.now().toIso8601String(),
         },
@@ -96,6 +98,8 @@ class LogbookRepository {
         photoPath: row['photo_path'] as String?,
         pdfPath: row['pdf_path'] as String?,
         hmiPhotoPath: row['hmi_photo_path'] as String?,
+        operatorName: row['operator_name'] as String?,
+        biometricVerified: (row['biometric_verified'] as int? ?? 0) == 1,
         synced: (row['synced'] as int) == 1,
         paramValues: values,
         paramPhotos: paramPhotos,
@@ -103,5 +107,13 @@ class LogbookRepository {
       ));
     }
     return entries;
+  }
+
+  /// Permanently removes one entry (and its parameter values / comments,
+  /// via ON DELETE CASCADE). Callers are responsible for gating this behind
+  /// a real confirmation — see BiometricAuth — since it can't be undone.
+  Future<void> deleteEntry(String id) async {
+    final db = await AppDatabase.instance.database;
+    await db.delete('logbook_entries', where: 'id = ?', whereArgs: [id]);
   }
 }

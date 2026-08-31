@@ -7,6 +7,12 @@ plugins {
 android {
     namespace = "com.logbridge.logbridge"
     compileSdk = flutter.compileSdkVersion
+    // Must match Flutter's expected NDK version — Flutter ships a
+    // PREBUILT native library (libdartjni.so) built for this exact NDK.
+    // Without it, Gradle tries to recompile that library from source via
+    // CMake instead of using the prebuilt one, which hit an unrelated
+    // Windows file-locking bug. The real fix for the sdkmanager crash is
+    // `android.builder.sdkDownload=false` in gradle.properties instead.
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

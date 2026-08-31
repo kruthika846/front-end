@@ -161,6 +161,10 @@ class _CylinderBankExpander extends ConsumerWidget {
         child: Material(
           type: MaterialType.transparency,
           child: ExpansionTile(
+          // Starts open, not collapsed — these six readings feed two of the
+          // 14 headline Daily Log rows (Exh. Gas Out Max/Min), so they're
+          // too easy to accidentally skip past when tucked behind a tap.
+          initiallyExpanded: true,
           tilePadding: const EdgeInsets.symmetric(horizontal: 14),
           childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
           iconColor: AppColors.cyan,

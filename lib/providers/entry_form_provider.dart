@@ -13,7 +13,11 @@ class EntryFormState {
   final String notes;
   final String? photoPath;
   final String? pdfPath;
-  final String? signaturePath;
+
+  /// True once the operator has passed a real device biometric check
+  /// (fingerprint/face) for this draft — required before submit, in place
+  /// of the drawn signature this form used to require.
+  final bool biometricVerified;
 
   /// Which of the day's two paper-log columns this entry is for — 'time' or
   /// 'noon' — picked explicitly by the operator rather than guessed from
@@ -36,7 +40,7 @@ class EntryFormState {
     this.notes = '',
     this.photoPath,
     this.pdfPath,
-    this.signaturePath,
+    this.biometricVerified = false,
     this.hmiPhotoPath,
     this.groupComments = const {},
     this.readingSlot,
@@ -48,12 +52,11 @@ class EntryFormState {
     String? notes,
     String? photoPath,
     String? pdfPath,
-    String? signaturePath,
+    bool? biometricVerified,
     String? hmiPhotoPath,
     Map<String, String>? groupComments,
     String? readingSlot,
     bool clearPhotoPath = false,
-    bool clearSignaturePath = false,
     bool clearHmiPhotoPath = false,
   }) {
     return EntryFormState(
@@ -62,7 +65,7 @@ class EntryFormState {
       notes: notes ?? this.notes,
       photoPath: clearPhotoPath ? null : (photoPath ?? this.photoPath),
       pdfPath: pdfPath ?? this.pdfPath,
-      signaturePath: clearSignaturePath ? null : (signaturePath ?? this.signaturePath),
+      biometricVerified: biometricVerified ?? this.biometricVerified,
       hmiPhotoPath: clearHmiPhotoPath ? null : (hmiPhotoPath ?? this.hmiPhotoPath),
       groupComments: groupComments ?? this.groupComments,
       readingSlot: readingSlot ?? this.readingSlot,
@@ -95,8 +98,7 @@ class EntryFormNotifier extends StateNotifier<EntryFormState> {
   void setPhotoPath(String? path) =>
       state = state.copyWith(photoPath: path, clearPhotoPath: path == null);
   void setPdfPath(String? path) => state = state.copyWith(pdfPath: path);
-  void setSignaturePath(String? path) =>
-      state = state.copyWith(signaturePath: path, clearSignaturePath: path == null);
+  void setBiometricVerified(bool verified) => state = state.copyWith(biometricVerified: verified);
   void setHmiPhotoPath(String? path) =>
       state = state.copyWith(hmiPhotoPath: path, clearHmiPhotoPath: path == null);
   void setReadingSlot(String slot) => state = state.copyWith(readingSlot: slot);
