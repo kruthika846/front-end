@@ -13,6 +13,80 @@ import 'edit_value_dialog.dart';
 ///                    to touch it when something is actually wrong.
 /// This is what makes the form "schema-driven": add a parameter to the JSON
 /// config and a field shows up here automatically, no new widget needed.
+/// A TextFormField that behaves like a normal field for direct typing, but
+/// also picks up value changes that come from outside typing — e.g. the OCR
+/// auto-fill flow calling notifier.setValue() for a field the operator never
+/// touched by hand. Plain `TextFormField(initialValue: ...)` only applies
+/// once, when the field is first built, and silently ignores every later
+/// change while it stays mounted — which is exactly why OCR-applied values
+/// sometimes never showed up on screen (they were set correctly in state,
+/// the visible box just never learned about it).
+class _SyncedTextField extends StatefulWidget {
+  final String value;
+  final TextInputType keyboardType;
+  final String? Function(String?)? validator;
+  final ValueChanged<String> onChanged;
+  final InputDecoration decoration;
+  final TextStyle? style;
+  final TextAlignVertical? textAlignVertical;
+
+  const _SyncedTextField({
+    required this.value,
+    required this.keyboardType,
+    required this.onChanged,
+    required this.decoration,
+    this.validator,
+    this.style,
+    this.textAlignVertical,
+  });
+
+  @override
+  State<_SyncedTextField> createState() => _SyncedTextFieldState();
+}
+
+class _SyncedTextFieldState extends State<_SyncedTextField> {
+  late final TextEditingController _controller;
+  final _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SyncedTextField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Only resync from an external change (e.g. OCR apply) — never while
+    // the operator is actively typing in this exact field, or we'd fight
+    // their cursor and undo their own keystrokes.
+    if (widget.value != _controller.text && !_focusNode.hasFocus) {
+      _controller.text = widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: _controller,
+      focusNode: _focusNode,
+      keyboardType: widget.keyboardType,
+      style: widget.style,
+      textAlignVertical: widget.textAlignVertical,
+      decoration: widget.decoration,
+      onChanged: widget.onChanged,
+      validator: widget.validator,
+    );
+  }
+}
+
 class DynamicParamField extends ConsumerWidget {
   final ParamDefinition definition;
 
@@ -69,8 +143,8 @@ class DynamicParamField extends ConsumerWidget {
           definition.unit.isEmpty ? definition.label : '${definition.label} (${definition.unit})';
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
-        child: TextFormField(
-          initialValue: currentValue,
+        child: _SyncedTextField(
+          value: currentValue,
           keyboardType: keyboardType,
           decoration: InputDecoration(labelText: labelWithUnit),
           onChanged: (v) => notifier.setValue(definition.key, v),
@@ -160,8 +234,8 @@ class _GaugeChip extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Expanded(
-                            child: TextFormField(
-                              initialValue: initialValue,
+                            child: _SyncedTextField(
+                              value: initialValue,
                               keyboardType: keyboardType,
                               style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700, fontSize: 16),
                               textAlignVertical: TextAlignVertical.center,

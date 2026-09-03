@@ -10,11 +10,14 @@ import '../providers/history_provider.dart';
 import '../providers/repository_providers.dart';
 import '../providers/session_provider.dart';
 import '../services/biometric_auth.dart';
+import '../services/ocr_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/dynamic_param_field.dart';
 import '../widgets/edit_value_dialog.dart';
 import '../widgets/engine_diagram.dart';
 import '../widgets/gauge_dial.dart';
+import '../widgets/ocr_review_dialog.dart';
+import '../widgets/ocr_settings_dialog.dart';
 import '../widgets/panel_comment_field.dart';
 import '../widgets/photo_upload_field.dart';
 
@@ -342,7 +345,13 @@ class _RemoteParametersPanel extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
             ),
-            _HmiCaptureButton(entryId: entryId),
+            IconButton(
+              icon: const Icon(Icons.settings_ethernet, size: 20),
+              color: AppColors.textMuted,
+              tooltip: 'OCR server address',
+              onPressed: () => showOcrSettingsDialog(context),
+            ),
+            _HmiCaptureButton(entryId: entryId, remoteParams: remoteParams),
           ],
         ),
         const SizedBox(height: 14),
@@ -388,17 +397,40 @@ class _RemoteParametersPanel extends StatelessWidget {
 }
 
 /// One photo of the whole remote HMI/monitoring screen — evidence of what
-/// the display showed at the time these values were transcribed. This does
-/// NOT read the values automatically; the operator still types every
-/// remote parameter in by hand, same as before. Auto-extracting numbers
-/// from the photo would need real computer vision/OCR — out of scope here.
-class _HmiCaptureButton extends ConsumerWidget {
+/// the display showed at the time these values were transcribed. After
+/// saving, it's sent to the OCR Scanner service (a separate backend a
+/// teammate built) to actually read the panel's values — but nothing gets
+/// typed into the form without the operator reviewing and approving it
+/// first (see ocr_review_dialog.dart). If the OCR server is unreachable
+/// or misconfigured, the photo is still saved either way; OCR is a bonus
+/// on top of manual entry, never a requirement for it.
+class _HmiCaptureButton extends ConsumerStatefulWidget {
   final String entryId;
-  const _HmiCaptureButton({required this.entryId});
+  final List<ParamDefinition> remoteParams;
+  const _HmiCaptureButton({required this.entryId, required this.remoteParams});
+
+  @override
+  ConsumerState<_HmiCaptureButton> createState() => _HmiCaptureButtonState();
+}
+
+class _HmiCaptureButtonState extends ConsumerState<_HmiCaptureButton> {
+  bool _scanning = false;
 
   Future<void> _capture(BuildContext context, WidgetRef ref) async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.camera, imageQuality: 90);
+    // Cap resolution, not just JPEG quality — a raw 12MP+ camera photo can
+    // be 8-15MB, which makes both the Wi-Fi upload and the OCR processing
+    // itself needlessly slow (this was causing real scan timeouts). Capped
+    // to 2000 (not lower) to match the OCR engine's own internal upscale
+    // target (ocr_engine.py's WHOLE_TARGET_LONG_SIDE) — sending anything
+    // smaller just means the server stretches it back up before reading
+    // it, losing real detail for no upload-speed benefit.
+    final picked = await picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 90,
+      maxWidth: 2000,
+      maxHeight: 2000,
+    );
     if (picked == null) return;
 
     final dir = await getApplicationDocumentsDirectory();
@@ -407,20 +439,61 @@ class _HmiCaptureButton extends ConsumerWidget {
       await targetDir.create(recursive: true);
     }
     final ext = picked.path.split('.').last;
-    final targetPath = '${targetDir.path}/$entryId.$ext';
+    final targetPath = '${targetDir.path}/${widget.entryId}.$ext';
     await File(picked.path).copy(targetPath);
 
     ref.read(entryFormProvider.notifier).setHmiPhotoPath(targetPath);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('HMI screen photo saved')),
+        const SnackBar(content: Text('HMI screen photo saved — scanning for readings...')),
       );
+    }
+
+    setState(() => _scanning = true);
+    try {
+      final result = await OcrService.scan(imageType: 'engine_dashboard', imageFile: File(targetPath));
+      if (!context.mounted) return;
+      await showOcrReviewDialog(context, ref, result: result, remoteParams: widget.remoteParams);
+    } on OcrServiceException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (e) {
+      // Anything not already wrapped as an OcrServiceException (e.g. the
+      // server's response shape not matching what this app expects) used to
+      // fail completely silently here — nothing shown, scan just seemed to
+      // do nothing. Surface it instead so a real mismatch is diagnosable.
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not read the OCR result: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _scanning = false);
     }
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final hasPhoto = ref.watch(entryFormProvider.select((s) => s.hmiPhotoPath != null));
+
+    if (_scanning) {
+      // Real OCR on a CPU-only laptop genuinely takes 20-40+ seconds (it
+      // tries several image rotations to find the right orientation before
+      // it even starts reading text) — a bare spinner with no explanation
+      // reads as frozen/broken well before that finishes.
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+            SizedBox(width: 8),
+            Text('Scanning… can take up to a minute', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+          ],
+        ),
+      );
+    }
 
     return OutlinedButton.icon(
       onPressed: () => _capture(context, ref),
