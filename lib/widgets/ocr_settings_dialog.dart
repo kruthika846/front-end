@@ -27,19 +27,21 @@ Future<void> showOcrSettingsDialog(BuildContext context) async {
           final ok = await OcrService.checkHealth();
           setState(() {
             checking = false;
-            statusMessage = ok ? 'Connected — OCR server is reachable.' : 'Could not reach a server at that address.';
+            statusMessage = ok
+                ? 'Connected — DSR Extract is reachable.'
+                : 'Could not reach DSR Extract at that address. Photos will be read on this tablet instead.';
           });
         }
 
         return AlertDialog(
-          title: const Text('OCR Server Address'),
+          title: const Text('DSR Extract (OCR) Address'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Where the gauge-reading (OCR) service is running. On the emulator, the default already points back '
-                'to this PC. On a real tablet, use this PC\'s LAN IP address instead (e.g. http://192.168.1.23:8000) '
+                'Where DSR Extract, the HMI screen reader, is running (port 8765). On the emulator, the default already '
+                'points back to this PC. On a real tablet, use this PC\'s LAN IP address instead (e.g. http://192.168.1.111:8765) '
                 '— both devices need to be on the same Wi-Fi.',
                 style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
               ),
@@ -47,7 +49,7 @@ Future<void> showOcrSettingsDialog(BuildContext context) async {
               TextField(
                 controller: controller,
                 keyboardType: TextInputType.url,
-                decoration: const InputDecoration(labelText: 'Server address', hintText: 'http://10.0.2.2:8000'),
+                decoration: const InputDecoration(labelText: 'Server address', hintText: 'http://10.0.2.2:8765'),
               ),
               if (statusMessage != null) ...[
                 const SizedBox(height: 10),

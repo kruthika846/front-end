@@ -16,25 +16,65 @@ Future<void> showOcrReviewDialog(
   WidgetRef ref, {
   required OcrScanResult result,
   required List<ParamDefinition> remoteParams,
+  required int generatorNumber,
 }) async {
-  final readings = confidentReadings(result);
+  final units = {for (final p in remoteParams) p.key: p.unit};
+  var readings = confidentReadings(result, generatorNumber: generatorNumber, unitOfParam: units);
   final labelFor = {for (final p in remoteParams) p.key: p.label};
-  // result.readingCount is OCR's total raw text-block count for the whole
-  // photo (labels, stray marks, everything) — comparing "readings.length"
-  // against that made the ratio look alarming for no reason. The number
-  // that actually matters is how many *schema fields* got a real value
-  // this scan, regardless of whether this app knows how to map them yet.
-  final matchedFieldCount = result.fields.where((f) => f.found).length;
+  final where = result.source == 'this tablet'
+      ? 'Read on this tablet (${result.fallbackReason ?? 'DSR Extract not reachable'}). '
+      : 'Read by DSR Extract. ';
+
+  // The screen in the photo is another generator's (e.g. Generator no.3's screen photographed for a
+  // Generator 2 entry): its values are never put in this entry silently. Say so and let the
+  // operator retake the photo or knowingly use them.
+  int? fromGenerator;
+  final named = generatorsInPhoto(result);
+  if (named.isNotEmpty && !named.contains(generatorNumber)) {
+    final other = (named.toList()..sort()).first;
+    final theirs = confidentReadings(result, generatorNumber: generatorNumber, unitOfParam: units, useGeneratorOfPhoto: other);
+    if (theirs.isNotEmpty) {
+      if (!context.mounted) return;
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('This photo shows Generator $other'),
+          content: Text(
+            '${where}This entry is for Generator $generatorNumber, but the screen in the photo is Generator no.$other '
+            '(${theirs.length} reading(s)).'
+            '${readings.isNotEmpty ? ' Only ${readings.length} unnamed value(s) in the photo could be Generator $generatorNumber\'s.' : ''}\n\n'
+            'Retake the photo on Generator $generatorNumber\'s screen, or use Generator $other\'s values only if that is '
+            'really what you mean to log here.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Retake / cancel')),
+            if (readings.isNotEmpty)
+              TextButton(onPressed: () => Navigator.pop(ctx, 'mine'), child: Text('Use Generator $generatorNumber\'s part')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, 'other'), child: Text('Use Generator $other\'s values')),
+          ],
+        ),
+      );
+      if (choice == null) return;
+      if (choice == 'other') {
+        readings = theirs;
+        fromGenerator = other;
+      }
+    }
+  }
 
   if (readings.isEmpty) {
     if (!context.mounted) return;
+    final seen = result.values.take(8).map((v) => '• ${v.label} = ${v.value} ${v.unit ?? ''}'.trim()).join('\n');
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('No matching readings found'),
-        content: Text(
-          'OCR found $matchedFieldCount value(s) in this photo, but none of them matched a field this app '
-          'knows how to auto-fill yet. Enter values by hand as usual.',
+        content: SingleChildScrollView(
+          child: Text(
+            '${where}OCR found ${result.values.length} value(s) in this photo, but none of them matched a field of '
+            'Generator $generatorNumber that this app knows how to auto-fill. Enter values by hand as usual.'
+            '${seen.isEmpty ? '' : '\n\nWhat was read:\n$seen${result.values.length > 8 ? '\n…' : ''}'}',
+          ),
         ),
         actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
       ),
@@ -58,7 +98,8 @@ Future<void> showOcrReviewDialog(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Recognized ${readings.length} of ${result.readingCount} scanned value(s) against known fields. '
+                  '${where}Recognized ${readings.length} of ${result.values.length} value(s) as Generator $generatorNumber fields'
+                  '${fromGenerator != null ? ' — taken from Generator $fromGenerator\'s screen, as you chose' : ''}. '
                   'Uncheck anything you don\'t want filled in — every value stays editable by hand after applying.',
                   style: const TextStyle(color: AppColors.textMuted, fontSize: 12.5),
                 ),
@@ -70,7 +111,7 @@ Future<void> showOcrReviewDialog(
                     contentPadding: EdgeInsets.zero,
                     dense: true,
                     title: Text(labelFor[r.paramKey] ?? r.paramKey),
-                    subtitle: Text('${r.value} ${r.unit}  ·  read as "${r.ocrLabel}"'),
+                    subtitle: Text('${r.value} ${r.unit}  ·  read as "${r.ocrLabel}"${r.converted ? '  ·  unit converted' : ''}'),
                     onChanged: (v) => setState(() => selected[r.paramKey] = v ?? false),
                   ),
               ],

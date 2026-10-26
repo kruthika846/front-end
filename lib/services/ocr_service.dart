@@ -1,45 +1,40 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'device_ocr.dart';
 
-/// One reading the OCR backend found (or didn't) for one schema field.
-class OcrFieldResult {
+/// One labelled value read off an HMI screen photo, as DSR Extract reports
+/// it: e.g. label "Gen 3 - LO press.", value "0.40", unit "MPa".
+class OcrValue {
   final String label;
-  final String? value;
-  final String unit;
-  final bool found;
+  final String value;
+  final String? unit;
+  final double confidence;
 
-  const OcrFieldResult({required this.label, required this.value, required this.unit, required this.found});
+  const OcrValue({required this.label, required this.value, this.unit, this.confidence = 0});
 
-  factory OcrFieldResult.fromJson(String label, Map<String, dynamic> json) {
-    return OcrFieldResult(
-      label: label,
-      value: json['value'] as String?,
-      unit: json['unit'] as String? ?? '',
-      found: json['found'] as bool? ?? false,
-    );
-  }
+  factory OcrValue.fromJson(Map<String, dynamic> j) => OcrValue(
+        label: '${j['label'] ?? ''}',
+        value: '${j['value'] ?? ''}',
+        unit: j['unit'] as String?,
+        confidence: (j['confidence'] as num?)?.toDouble() ?? 0,
+      );
 }
 
-/// The full response from POST /scan/{image_type} — one entry per field in
-/// that image type's fixed schema, in schema order.
+/// Everything read from one HMI photo, and where it was read.
 class OcrScanResult {
-  final String imageType;
-  final int readingCount;
-  final int missingCount;
-  final List<OcrFieldResult> fields;
+  /// "DSR Extract" (the OCR server) or "this tablet" (offline fallback).
+  final String source;
+  final List<OcrValue> values;
 
-  const OcrScanResult({
-    required this.imageType,
-    required this.readingCount,
-    required this.missingCount,
-    required this.fields,
-  });
+  /// Why the tablet read it itself, when it did.
+  final String? fallbackReason;
+
+  const OcrScanResult({required this.source, required this.values, this.fallbackReason});
 }
 
-/// Thrown for anything that stops a scan from completing — network
-/// unreachable, schema not set up yet on the server, OCR engine failure,
-/// etc. Always carries a message safe to show the operator directly.
+/// Thrown for anything that stops a scan from completing. Always carries a
+/// message safe to show the operator directly.
 class OcrServiceException implements Exception {
   final String message;
   const OcrServiceException(this.message);
@@ -47,21 +42,20 @@ class OcrServiceException implements Exception {
   String toString() => message;
 }
 
-/// Talks to the OCR Scanner API (a separate Python/FastAPI service your
-/// teammate built — see OCR/api.py) that reads gauge/dashboard panel
-/// values out of a photo. This is a real network call to a real service;
-/// nothing here is simulated. The server address is configurable at
-/// runtime (Settings screen) since it's a local/LAN dev server whose IP
-/// changes depending on which network you're on — not something to hard
-/// code and rebuild the app for every time.
+/// Reads an HMI screen photo with DSR Extract — the offline OCR service from
+/// LogBridge-DSR (dsr-extract/, POST /extract/pdf) running on the PC or ship
+/// server. If it can't be reached, the photo is read on this tablet instead
+/// (DeviceOcr.readHmi), so capture still works with no network. The server
+/// address is set at runtime (OCR settings) because its LAN IP changes with
+/// the network.
 class OcrService {
-  static const _prefsKey = 'ocr_server_base_url';
+  // A new key: the old OCR scanner (port 8000) is no longer used, and an address saved for it
+  // would point at the wrong service.
+  static const _prefsKey = 'dsr_extract_base_url';
 
-  /// Sensible default for the Android *emulator* specifically — 10.0.2.2
-  /// is the special address the emulator maps back to the host machine's
-  /// own localhost. A real tablet on the same Wi-Fi as the PC running the
-  /// OCR server needs the PC's actual LAN IP instead (set via Settings).
-  static const defaultBaseUrl = 'http://10.0.2.2:8000';
+  /// The Android emulator's address for the PC it runs on. A real tablet needs
+  /// the PC's Wi-Fi address instead, e.g. http://192.168.1.111:8765.
+  static const defaultBaseUrl = 'http://10.0.2.2:8765';
 
   static Future<String> getBaseUrl() async {
     final prefs = await SharedPreferences.getInstance();
@@ -70,8 +64,6 @@ class OcrService {
 
   static Future<void> setBaseUrl(String url) async {
     final prefs = await SharedPreferences.getInstance();
-    // Trim a trailing slash so "http://host:8000/" and "http://host:8000"
-    // both work the same when we append a path below.
     final trimmed = url.trim().replaceAll(RegExp(r'/+$'), '');
     await prefs.setString(_prefsKey, trimmed);
   }
@@ -82,8 +74,7 @@ class OcrService {
         receiveTimeout: receiveTimeout,
       ));
 
-  /// GET /health — used by the Settings screen to confirm the configured
-  /// address actually reaches the OCR server before relying on it.
+  /// GET /health — DSR Extract answers {"status": "ok"}.
   static Future<bool> checkHealth() async {
     final baseUrl = await getBaseUrl();
     try {
@@ -94,73 +85,51 @@ class OcrService {
     }
   }
 
-  /// POST /scan/{imageType} — uploads the photo and returns the readings
-  /// the OCR engine found, aligned to that image type's fixed schema.
-  /// Throws [OcrServiceException] with a message safe to show directly if
-  /// the server is unreachable, the schema doesn't exist yet, or the OCR
-  /// engine itself fails on this image.
-  static Future<OcrScanResult> scan({required String imageType, required File imageFile}) async {
+  static Future<OcrScanResult> scan({required File imageFile}) async {
     final baseUrl = await getBaseUrl();
-    // Real OCR (PaddleOCR running on someone's laptop CPU) is genuinely
-    // slow compared to a typical API call — especially the first scan
-    // after the server starts, which has to load its recognition models
-    // into memory before it can even look at the photo. 30s (Dio's
-    // default) isn't enough; give it real headroom.
+    // A photo of a screen takes DSR Extract several seconds (more on a slow PC, and the first one
+    // after it starts loads its OCR models).
     final dio = _client(baseUrl, receiveTimeout: const Duration(seconds: 120));
-
     final formData = FormData.fromMap({
       'file': await MultipartFile.fromFile(imageFile.path, filename: imageFile.uri.pathSegments.last),
     });
 
     Response<dynamic> res;
     try {
-      res = await dio.post(
-        '/scan/$imageType',
-        data: formData,
-        options: Options(sendTimeout: const Duration(seconds: 60)),
-      );
+      res = await dio.post('/extract/pdf', data: formData, options: Options(sendTimeout: const Duration(seconds: 60)));
     } on DioException catch (e) {
-      if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.connectionError) {
-        throw OcrServiceException(
-          'Could not reach the OCR server at $baseUrl. Check it\'s running and the address is correct (Settings).',
-        );
-      }
+      final unreachable = e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.unknown;
+      if (unreachable) return _onTablet(imageFile, 'DSR Extract could not be reached at $baseUrl');
       if (e.type == DioExceptionType.receiveTimeout || e.type == DioExceptionType.sendTimeout) {
-        throw const OcrServiceException(
-          'The OCR server took too long to respond. It may still be starting up (the first scan after it launches is '
-          'always the slowest) — wait a few seconds and try again.',
-        );
+        return _onTablet(imageFile, 'DSR Extract took too long to answer');
       }
-      if (e.response?.statusCode == 404) {
-        throw OcrServiceException(
-          'The OCR server has no schema set up for "$imageType" yet — ask whoever runs it to set one up first.',
-        );
-      }
-      throw OcrServiceException('OCR scan failed: ${e.response?.data?['detail'] ?? e.message}');
+      throw OcrServiceException('DSR Extract could not read this photo: ${e.response?.data?['detail'] ?? e.message}');
     }
 
-    // The server sent a normal 200 OK, but its JSON body still has to match
-    // the shape this app expects field-for-field. If the server code has
-    // changed since this was built against it, a raw cast failure here used
-    // to bubble up as an unhandled error the operator never saw anything
-    // for. Wrap it so a real mismatch is at least visible and diagnosable.
     try {
       final data = res.data as Map<String, dynamic>;
-      final resultMap = data['result'] as Map<String, dynamic>;
-      final fields = resultMap.entries
-          .map((e) => OcrFieldResult.fromJson(e.key, e.value as Map<String, dynamic>))
+      if (data['document_type'] == 'error') {
+        throw OcrServiceException('DSR Extract could not read this photo: ${data['error'] ?? 'unknown error'}');
+      }
+      final values = ((data['extracted_values'] as List?) ?? const [])
+          .map((e) => OcrValue.fromJson(e as Map<String, dynamic>))
           .toList();
-
-      return OcrScanResult(
-        imageType: data['image_type'] as String,
-        readingCount: data['reading_count'] as int,
-        missingCount: data['missing_count'] as int,
-        fields: fields,
-      );
+      return OcrScanResult(source: 'DSR Extract', values: values);
+    } on OcrServiceException {
+      rethrow;
     } catch (e) {
-      throw OcrServiceException(
-        'The OCR server responded, but not in the format this app expects (its code may have changed). Raw error: $e',
-      );
+      throw OcrServiceException('DSR Extract answered, but not in the format this app expects. Raw error: $e');
     }
+  }
+
+  static Future<OcrScanResult> _onTablet(File imageFile, String reason) async {
+    final data = await DeviceOcr.readHmi(imageFile.path);
+    if (data['error'] != null) throw OcrServiceException('$reason, and reading on this tablet failed: ${data['error']}');
+    final values = ((data['extracted_values'] as List?) ?? const [])
+        .map((e) => OcrValue.fromJson(e as Map<String, dynamic>))
+        .toList();
+    return OcrScanResult(source: 'this tablet', values: values, fallbackReason: reason);
   }
 }

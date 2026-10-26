@@ -5,15 +5,16 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/param_definition.dart';
 import '../providers/entry_form_provider.dart';
+import '../services/device_ocr.dart';
 import '../theme/app_colors.dart';
 import 'edit_value_dialog.dart';
 
 /// A circular, gauge-styled reading for Local Parameters: a radial fill
 /// ring showing where the typed value sits in its min/max range (like a
 /// real dial), the number entered in the center, and a camera badge for
-/// photographing the physical gauge as evidence. The photo is evidence
-/// only — nobody reads it automatically; the operator still types the
-/// number themselves.
+/// photographing the physical gauge. The photo is kept as evidence and read
+/// on the tablet by gauge-reader, which offers the value; the operator
+/// applies it (or types the number) themselves.
 class GaugeDial extends ConsumerWidget {
   final ParamDefinition definition;
   final Color accent;
@@ -39,11 +40,57 @@ class GaugeDial extends ConsumerWidget {
     final ext = picked.path.split('.').last;
     final savedPath = await _copyToAppStorage(picked.path, 'gauge_photos', '${entryId}_${definition.key}.$ext');
     ref.read(entryFormProvider.notifier).setParamPhoto(definition.key, savedPath);
-    if (context.mounted) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Gauge photo saved for ${definition.label} — reading the dial on this tablet...')),
+    );
+    await _readGauge(context, ref, savedPath);
+  }
+
+  /// Reads the photographed needle gauge with gauge-reader, on this tablet,
+  /// and offers the value. Like HMI scans, nothing is filled in until the
+  /// operator applies it, and it stays editable by hand.
+  Future<void> _readGauge(BuildContext context, WidgetRef ref, String photoPath) async {
+    final r = await DeviceOcr.readGauge(photoPath, definition.unit);
+    if (!context.mounted) return;
+    if (r.error != null || r.value == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gauge photo saved for ${definition.label}')),
+        SnackBar(content: Text('Could not read this gauge (${r.error ?? 'no value found'}). Type the value as usual.')),
       );
+      return;
     }
+    // Pressures in MPa need more places than temperatures in °C.
+    final places = r.value!.abs() < 10 ? 2 : 1;
+    final value = double.parse(r.value!.toStringAsFixed(places)).toString();
+    final apply = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Gauge reading — ${definition.label}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('$value ${definition.unit}', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(
+              'Read on this tablet · confidence ${(r.confidence * 100).round()}%'
+              '${r.converted ? '\nThe dial shows ${r.dialValue} ${r.dialUnit}; converted to ${definition.unit}.' : ''}'
+              '${r.gaugesFound > 1 ? '\n${r.gaugesFound} gauges in the photo; the clearest one was read.' : ''}',
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 12.5),
+            ),
+            for (final n in r.notes.take(3))
+              Text('• $n', style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+            const SizedBox(height: 8),
+            const Text('Check it against the dial before applying.', style: TextStyle(fontSize: 12.5)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Discard')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Apply')),
+        ],
+      ),
+    );
+    if (apply == true) ref.read(entryFormProvider.notifier).setValue(definition.key, value);
   }
 
   @override

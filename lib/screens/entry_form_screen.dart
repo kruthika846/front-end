@@ -120,7 +120,7 @@ class _EntryFormScreenState extends ConsumerState<EntryFormScreen> {
               children: [
                 const _ReadingSlotSelector(),
                 const SizedBox(height: 16),
-                _RemoteParametersPanel(remoteParams: config.remoteParams, entryId: _entryId),
+                _RemoteParametersPanel(remoteParams: config.remoteParams, entryId: _entryId, generatorNumber: widget.generatorNumber),
                 const SizedBox(height: 16),
                 _LocalParametersPanel(localParams: config.localParams, entryId: _entryId),
                 const SizedBox(height: 16),
@@ -310,8 +310,9 @@ class _BiometricAuthFieldState extends ConsumerState<_BiometricAuthField> {
 class _RemoteParametersPanel extends StatelessWidget {
   final List<ParamDefinition> remoteParams;
   final String entryId;
+  final int generatorNumber;
 
-  const _RemoteParametersPanel({required this.remoteParams, required this.entryId});
+  const _RemoteParametersPanel({required this.remoteParams, required this.entryId, required this.generatorNumber});
 
   ParamDefinition _find(String key) => remoteParams.firstWhere((p) => p.key == key);
 
@@ -348,10 +349,10 @@ class _RemoteParametersPanel extends StatelessWidget {
             IconButton(
               icon: const Icon(Icons.settings_ethernet, size: 20),
               color: AppColors.textMuted,
-              tooltip: 'OCR server address',
+              tooltip: 'DSR Extract (OCR) address',
               onPressed: () => showOcrSettingsDialog(context),
             ),
-            _HmiCaptureButton(entryId: entryId, remoteParams: remoteParams),
+            _HmiCaptureButton(entryId: entryId, remoteParams: remoteParams, generatorNumber: generatorNumber),
           ],
         ),
         const SizedBox(height: 14),
@@ -398,8 +399,8 @@ class _RemoteParametersPanel extends StatelessWidget {
 
 /// One photo of the whole remote HMI/monitoring screen — evidence of what
 /// the display showed at the time these values were transcribed. After
-/// saving, it's sent to the OCR Scanner service (a separate backend a
-/// teammate built) to actually read the panel's values — but nothing gets
+/// saving, it's read by DSR Extract (the OCR server on the PC/ship network;
+/// on this tablet itself when that can't be reached) to read the panel's values — but nothing gets
 /// typed into the form without the operator reviewing and approving it
 /// first (see ocr_review_dialog.dart). If the OCR server is unreachable
 /// or misconfigured, the photo is still saved either way; OCR is a bonus
@@ -407,7 +408,8 @@ class _RemoteParametersPanel extends StatelessWidget {
 class _HmiCaptureButton extends ConsumerStatefulWidget {
   final String entryId;
   final List<ParamDefinition> remoteParams;
-  const _HmiCaptureButton({required this.entryId, required this.remoteParams});
+  final int generatorNumber;
+  const _HmiCaptureButton({required this.entryId, required this.remoteParams, required this.generatorNumber});
 
   @override
   ConsumerState<_HmiCaptureButton> createState() => _HmiCaptureButtonState();
@@ -451,9 +453,10 @@ class _HmiCaptureButtonState extends ConsumerState<_HmiCaptureButton> {
 
     setState(() => _scanning = true);
     try {
-      final result = await OcrService.scan(imageType: 'engine_dashboard', imageFile: File(targetPath));
+      final result = await OcrService.scan(imageFile: File(targetPath));
       if (!context.mounted) return;
-      await showOcrReviewDialog(context, ref, result: result, remoteParams: widget.remoteParams);
+      await showOcrReviewDialog(context, ref,
+          result: result, remoteParams: widget.remoteParams, generatorNumber: widget.generatorNumber);
     } on OcrServiceException catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));

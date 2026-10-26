@@ -1,0 +1,60 @@
+# One entry per physical gauge.
+#
+#   type        pressure | temperature | vacuum | flow | level | voltage | current | speed
+#   unit        unit printed on the dial (bar, psi, kPa, kg/cm2, C, F, K, ...)
+#   min_value   number at the start of the scale
+#   max_value   number at the end of the scale
+#   min_angle   needle angle at min_value  } degrees, clockwise from 6 o'clock:
+#   max_angle   needle angle at max_value  } 6=0, 9=90, 12=180, 3=270
+#   show_also   (optional) extra units to convert the reading into
+#   warn_below / warn_above  (optional) flag LOW / HIGH
+#   center: [x, y], radius   (optional) pixel position if auto-detection fails
+
+gauges:
+  boiler_pressure:
+    type: pressure
+    unit: bar
+    min_value: 0
+    max_value: 10
+    min_angle: 45
+    max_angle: 315
+    show_also: [psi, kPa]
+    warn_above: 8
+
+  air_line_psi:
+    type: pressure
+    unit: psi
+    min_value: 0
+    max_value: 160
+    min_angle: 45
+    max_angle: 315
+    show_also: [bar]
+
+  water_temp:
+    type: temperature
+    unit: C
+    min_value: -20
+    max_value: 120
+    min_angle: 45
+    max_angle: 315
+    show_also: [F]
+    warn_above: 95
+
+  oven_temp_f:
+    type: temperature
+    unit: F
+    min_value: 100
+    max_value: 600
+    min_angle: 60
+    max_angle: 300
+    show_also: [C]
+    decimals: 0
+
+  pump_vacuum:
+    type: vacuum
+    unit: inHg
+    min_value: 0
+    max_value: 30
+    min_angle: 45
+    max_angle: 315
+    show_also: [kPa]
