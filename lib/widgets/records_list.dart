@@ -5,6 +5,7 @@ import '../providers/history_provider.dart';
 import '../screens/entry_detail_screen.dart';
 import '../theme/app_colors.dart';
 import 'delete_entry_action.dart';
+import 'log_status_chip.dart';
 
 /// The flat entry list for one generator's "Records" section — only shows
 /// entries logged against that generator (legacy entries with no generator
@@ -85,14 +86,16 @@ class RecordsList extends ConsumerWidget {
                                 Text(entry.engineId, style: const TextStyle(fontWeight: FontWeight.w600)),
                                 const SizedBox(height: 2),
                                 Text(dateFormat.format(entry.timestamp), style: const TextStyle(color: AppColors.textMuted, fontSize: 12.5)),
+                                if (entry.rejectReason != null && (entry.status == 'rejected' || entry.status == 'draft'))
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Text(entry.rejectReason!, style: const TextStyle(color: AppColors.alarm, fontSize: 12.5)),
+                                  ),
                               ],
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Icon(
-                            entry.synced ? Icons.cloud_done : Icons.cloud_off,
-                            color: entry.synced ? Colors.green : Colors.grey,
-                          ),
+                          LogStatusChip(entry: entry),
                           IconButton(
                             icon: const Icon(Icons.delete_outline, color: AppColors.alarm, size: 20),
                             tooltip: 'Delete (biometric required)',

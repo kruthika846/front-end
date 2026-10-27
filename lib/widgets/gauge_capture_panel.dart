@@ -119,7 +119,7 @@ class _GaugeCapturePanelState extends ConsumerState<GaugeCapturePanel> {
     final places = v.abs() < 10 ? 3 : 1;
     final value = double.parse(v.toStringAsFixed(places)).toString();
     final notifier = ref.read(entryFormProvider.notifier);
-    notifier.setValue(p.key, value);
+    notifier.setReaderValue(p.key, value); // unchecked until a person ticks it
     notifier.setParamPhoto(p.key, c.photoPath);
     setState(() => c.savedKey = p.key);
     ScaffoldMessenger.of(context).showSnackBar(

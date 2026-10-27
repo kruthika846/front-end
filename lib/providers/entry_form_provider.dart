@@ -34,6 +34,13 @@ class EntryFormState {
   /// not per individual reading.
   final Map<String, String> groupComments;
 
+  /// Values a reader (HMI scan, gauge reading) filled in that no person has checked yet.
+  /// Submit is blocked while any is left (design: "a person checks every value").
+  final Set<String> unchecked;
+
+  /// What the reader suggested for a value, kept beside the value the person ends up with.
+  final Map<String, String> ocrValues;
+
   const EntryFormState({
     this.values = const {},
     this.paramPhotos = const {},
@@ -44,7 +51,11 @@ class EntryFormState {
     this.hmiPhotoPath,
     this.groupComments = const {},
     this.readingSlot,
+    this.unchecked = const {},
+    this.ocrValues = const {},
   });
+
+  bool isChecked(String key) => !unchecked.contains(key);
 
   EntryFormState copyWith({
     Map<String, String>? values,
@@ -56,6 +67,8 @@ class EntryFormState {
     String? hmiPhotoPath,
     Map<String, String>? groupComments,
     String? readingSlot,
+    Set<String>? unchecked,
+    Map<String, String>? ocrValues,
     bool clearPhotoPath = false,
     bool clearHmiPhotoPath = false,
   }) {
@@ -69,6 +82,8 @@ class EntryFormState {
       hmiPhotoPath: clearHmiPhotoPath ? null : (hmiPhotoPath ?? this.hmiPhotoPath),
       groupComments: groupComments ?? this.groupComments,
       readingSlot: readingSlot ?? this.readingSlot,
+      unchecked: unchecked ?? this.unchecked,
+      ocrValues: ocrValues ?? this.ocrValues,
     );
   }
 }
@@ -76,10 +91,33 @@ class EntryFormState {
 class EntryFormNotifier extends StateNotifier<EntryFormState> {
   EntryFormNotifier() : super(const EntryFormState());
 
+  /// A value a person typed or chose: it counts as checked.
   void setValue(String key, String value) {
     final updated = Map<String, String>.from(state.values)..[key] = value;
-    state = state.copyWith(values: updated);
+    state = state.copyWith(values: updated, unchecked: {...state.unchecked}..remove(key));
   }
+
+  /// A value a reader suggested (HMI scan, gauge reading): unchecked until a person ticks it.
+  void setReaderValue(String key, String value) {
+    state = state.copyWith(
+      values: Map<String, String>.from(state.values)..[key] = value,
+      ocrValues: Map<String, String>.from(state.ocrValues)..[key] = value,
+      unchecked: {...state.unchecked, key},
+    );
+  }
+
+  void setChecked(String key, bool checked) {
+    final u = {...state.unchecked};
+    checked ? u.remove(key) : u.add(key);
+    state = state.copyWith(unchecked: u);
+  }
+
+  /// After the person confirmed they compared every value with the instruments.
+  void checkAll() => state = state.copyWith(unchecked: const {});
+
+  /// Filled-in values still waiting for a person's check.
+  List<String> get uncheckedFilled =>
+      state.unchecked.where((k) => (state.values[k] ?? '').trim().isNotEmpty).toList();
 
   /// Attach (or clear, by passing null) a gauge photo to one specific
   /// parameter — this is the evidence photo of the physical dial, not an

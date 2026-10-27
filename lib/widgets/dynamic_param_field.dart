@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/param_definition.dart';
 import '../providers/entry_form_provider.dart';
 import '../theme/app_colors.dart';
+import 'check_tick.dart';
 import 'edit_value_dialog.dart';
 import 'synced_text_field.dart';
 
@@ -146,16 +147,23 @@ class _GaugeChip extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        definition.label.toUpperCase(),
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              letterSpacing: 0.3,
-                              color: AppColors.textMuted,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 9.5,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              definition.label.toUpperCase(),
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    letterSpacing: 0.3,
+                                    color: AppColors.textMuted,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 9.5,
+                                  ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                          ),
+                          CheckTick(paramKey: definition.key, size: 16),
+                        ],
                       ),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.end,

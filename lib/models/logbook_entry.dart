@@ -45,6 +45,23 @@ class LogbookEntry {
   /// not per individual reading.
   final Map<String, String> groupComments;
 
+  /// The LogBridge server log this entry is: L-<vessel>-<screen>-<date>-<round>. Null for an
+  /// entry saved before sync existed.
+  final String? logId;
+
+  /// local (saved before sync; stays on this tablet), draft (the server sent it back or
+  /// refused it), submitted (waiting for the Chief Engineer), approved (signed and final),
+  /// rejected (sent back with [rejectReason]).
+  final String status;
+  final String? rejectReason;
+
+  /// What the reader (HMI scan, gauge reading) suggested, where it did: kept beside the value
+  /// the person entered, so reader accuracy can be measured (design, section 4).
+  final Map<String, String> ocrValues;
+
+  bool get isFinal => status == 'approved';
+  bool get isOnServer => logId != null && status != 'local';
+
   /// Every non-empty group comment on this entry, combined into one
   /// readable line (e.g. "Turbocharger: bearing noise  •  Alternator:
   /// vibration slightly high") — this is what makes a comment actually
@@ -78,5 +95,9 @@ class LogbookEntry {
     required this.paramValues,
     this.paramPhotos = const {},
     this.groupComments = const {},
+    this.logId,
+    this.status = 'local',
+    this.rejectReason,
+    this.ocrValues = const {},
   });
 }

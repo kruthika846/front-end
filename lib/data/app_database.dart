@@ -23,7 +23,7 @@ class AppDatabase {
     final path = join(dbPath, 'logbridge.db');
     return openDatabase(
       path,
-      version: 7,
+      version: 8,
       onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, version) async {
         await db.execute('''
@@ -65,6 +65,7 @@ class AppDatabase {
             FOREIGN KEY(entry_id) REFERENCES logbook_entries(id) ON DELETE CASCADE
           )
         ''');
+        await _addSync(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -113,7 +114,60 @@ class AppDatabase {
           await db.execute('ALTER TABLE logbook_entries ADD COLUMN operator_name TEXT');
           await db.execute('ALTER TABLE logbook_entries ADD COLUMN biometric_verified INTEGER NOT NULL DEFAULT 0');
         }
+        if (oldVersion < 8) {
+          await _addSync(db);
+        }
       },
     );
+  }
+
+  /// Sync with the LogBridge server (design, sections 3 and 6): each entry is a server log
+  /// (log_id, status), every value says whether a person checked it and what the reader read,
+  /// and changes wait in an outbox until the server has them. Entries saved before this
+  /// existed keep status 'local': they stay on this tablet.
+  static Future<void> _addSync(Database db) async {
+    await db.execute('ALTER TABLE logbook_entries ADD COLUMN log_id TEXT');
+    await db.execute("ALTER TABLE logbook_entries ADD COLUMN status TEXT NOT NULL DEFAULT 'local'");
+    await db.execute('ALTER TABLE logbook_entries ADD COLUMN reject_reason TEXT');
+    await db.execute('ALTER TABLE parameter_values ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 1');
+    await db.execute('ALTER TABLE parameter_values ADD COLUMN ocr_value TEXT');
+    // one operation each: log.upsert, reading.set, photo.meta, log.submit - with its own id, so a
+    // retry never doubles anything
+    await db.execute('''
+      CREATE TABLE outbox (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        op_id TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL,
+        log_id TEXT,
+        op TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    // photos and PDFs to send: details first (with the hash), then the file
+    await db.execute('''
+      CREATE TABLE sync_photos (
+        id TEXT PRIMARY KEY,
+        entry_id TEXT NOT NULL,
+        log_id TEXT NOT NULL,
+        path TEXT NOT NULL,
+        mime TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        sha256 TEXT NOT NULL,
+        taken_at TEXT NOT NULL,
+        meta_synced INTEGER NOT NULL DEFAULT 0,
+        uploaded INTEGER NOT NULL DEFAULT 0,
+        rejected TEXT
+      )
+    ''');
+    // what the server refused, for the Sync tab
+    await db.execute('''
+      CREATE TABLE sync_refused (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        at TEXT NOT NULL,
+        type TEXT NOT NULL,
+        log_id TEXT,
+        message TEXT NOT NULL
+      )
+    ''');
   }
 }

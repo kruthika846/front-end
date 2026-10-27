@@ -28,6 +28,9 @@ class LogbookRepository {
           'biometric_verified': entry.biometricVerified ? 1 : 0,
           'synced': entry.synced ? 1 : 0,
           'created_at': DateTime.now().toIso8601String(),
+          'log_id': entry.logId,
+          'status': entry.status,
+          'reject_reason': entry.rejectReason,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -42,6 +45,8 @@ class LogbookRepository {
           'param_category': category.name,
           'value': entry.paramValues[key],
           'photo_path': entry.paramPhotos[key],
+          'confirmed': 1, // an entry is saved only once every value has been checked
+          'ocr_value': entry.ocrValues[key],
         });
       }
 
@@ -83,6 +88,10 @@ class LogbookRepository {
       final values = <String, String>{
         for (final p in paramRows) p['param_key'] as String: (p['value'] as String?) ?? '',
       };
+      final ocrValues = <String, String>{
+        for (final p in paramRows)
+          if (p['ocr_value'] != null) p['param_key'] as String: p['ocr_value'] as String,
+      };
       final paramPhotos = <String, String>{
         for (final p in paramRows)
           if (p['photo_path'] != null) p['param_key'] as String: p['photo_path'] as String,
@@ -114,6 +123,10 @@ class LogbookRepository {
         paramValues: values,
         paramPhotos: paramPhotos,
         groupComments: groupComments,
+        logId: row['log_id'] as String?,
+        status: (row['status'] as String?) ?? 'local',
+        rejectReason: row['reject_reason'] as String?,
+        ocrValues: ocrValues,
       ));
     }
     return entries;
@@ -122,6 +135,21 @@ class LogbookRepository {
   /// Permanently removes one entry (and its parameter values / comments,
   /// via ON DELETE CASCADE). Callers are responsible for gating this behind
   /// a real confirmation — see BiometricAuth — since it can't be undone.
+  /// The server's word on a log (from sync): submitted, approved, rejected with a reason, ...
+  Future<void> setStatus(String logId, String status, {String? reason}) async {
+    final db = await AppDatabase.instance.database;
+    await db.update('logbook_entries', {'status': status, 'reject_reason': reason, 'synced': status == 'draft' ? 0 : 1},
+        where: 'log_id = ?', whereArgs: [logId]);
+  }
+
+  /// The newest entry on this tablet that is (or was) this server log.
+  Future<String?> statusOf(String logId) async {
+    final db = await AppDatabase.instance.database;
+    final rows = await db.query('logbook_entries', columns: ['status'], where: 'log_id = ?', whereArgs: [logId],
+        orderBy: 'entry_timestamp DESC', limit: 1);
+    return rows.isEmpty ? null : rows.first['status'] as String?;
+  }
+
   Future<void> deleteEntry(String id) async {
     final db = await AppDatabase.instance.database;
     await db.delete('logbook_entries', where: 'id = ?', whereArgs: [id]);

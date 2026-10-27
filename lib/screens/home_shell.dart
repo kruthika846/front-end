@@ -1,12 +1,15 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/session_provider.dart';
 import '../services/auth_service.dart';
+import '../services/sync_service.dart';
 import '../theme/app_colors.dart';
 import 'department_screen.dart';
 import 'log_book_screen.dart';
 import 'me_screen.dart';
+import 'sync_screen.dart';
 
 class _Tab {
   final String label;
@@ -25,18 +28,40 @@ class HomeShell extends ConsumerStatefulWidget {
   ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends ConsumerState<HomeShell> {
+class _HomeShellState extends ConsumerState<HomeShell> with WidgetsBindingObserver {
   int _index = 0;
+  Timer? _timer;
+
+  // Sync every 45 seconds while the app is open, and when it comes back to the front
+  // (design, section 3). With the app closed nothing syncs.
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _timer = Timer.periodic(const Duration(seconds: 45), (_) => _sync());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _sync());
+  }
+
+  void _sync() {
+    if (ref.read(sessionProvider) != null && !ref.read(lockedProvider)) ref.read(syncProvider.notifier).syncNow();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _sync();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
   static List<_Tab> tabsFor(SessionUser user) => [
         if (user.canCapture) const _Tab('Capture', Icons.photo_camera_outlined, DepartmentScreen()),
         if (user.role != Roles.admin) const _Tab('Log book', Icons.menu_book_outlined, LogBookScreen()),
-        if (user.canCapture)
-          const _Tab('Sync', Icons.sync, _ComingTab(
-            title: 'Sync',
-            text: 'Sending logs and photos to the LogBridge server, what is waiting, what the server refused, '
-                'and when this tablet last synced. Coming in Phase 2 — until then entries stay on this tablet.',
-          )),
+        if (user.canCapture) const _Tab('Sync', Icons.sync, SyncScreen()),
         if (user.canSign)
           const _Tab('Sign', Icons.draw_outlined, _ComingTab(
             title: 'Sign',
@@ -63,7 +88,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     return Scaffold(
       body: Column(
         children: [
-          if (session.offline) const _OfflineBanner(),
+          if (session.offline) const _OfflineBanner() else if (session.user.canCapture) const _SyncBanner(),
           Expanded(child: IndexedStack(index: index, children: [for (final t in tabs) t.page])),
         ],
       ),
@@ -91,6 +116,38 @@ class _OfflineBanner extends StatelessWidget {
         'Signed in without a connection to the server. Everything you capture stays on this tablet.',
         style: TextStyle(color: AppColors.gold, fontSize: 12.5),
       ),
+    );
+  }
+}
+
+/// The last sync is always in view: a banner when it is more than 2 days old, an alarm after 7
+/// (design, section 6). Also when the server no longer accepts the sign-in.
+class _SyncBanner extends ConsumerWidget {
+  const _SyncBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(syncProvider);
+    final days = s.daysSinceSync;
+    String? text;
+    var color = AppColors.gold;
+    if (s.needsSignIn) {
+      text = 'Sync stopped: sign out and sign in again with a connection.';
+      color = AppColors.alarm;
+    } else if (days != null && days >= 7) {
+      text = 'Not synced for $days days. Connect to the ship or office network now.';
+      color = AppColors.alarm;
+    } else if (days != null && days >= 2) {
+      text = 'Last synced $days days ago. Connect to the ship or office network to send your logs.';
+    } else if (s.lastOk == null && s.pendingOps > 0) {
+      text = 'Not synced yet: ${s.pendingOps} change(s) waiting for a connection to the server.';
+    }
+    if (text == null) return SizedBox(height: MediaQuery.of(context).padding.top);
+    return Container(
+      width: double.infinity,
+      color: color.withValues(alpha: 0.16),
+      padding: EdgeInsets.fromLTRB(16, MediaQuery.of(context).padding.top + 6, 16, 6),
+      child: Text(text, style: TextStyle(color: color, fontSize: 12.5, fontWeight: FontWeight.w600)),
     );
   }
 }

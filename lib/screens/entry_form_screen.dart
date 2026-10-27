@@ -9,9 +9,11 @@ import '../providers/entry_form_provider.dart';
 import '../providers/history_provider.dart';
 import '../providers/repository_providers.dart';
 import '../providers/session_provider.dart';
-import '../services/biometric_auth.dart';
 import '../services/ocr_service.dart';
+import '../services/server_config.dart';
+import '../services/sync_service.dart';
 import '../theme/app_colors.dart';
+import '../widgets/check_tick.dart';
 import '../widgets/dynamic_param_field.dart';
 import '../widgets/edit_value_dialog.dart';
 import '../widgets/engine_diagram.dart';
@@ -55,20 +57,38 @@ class _EntryFormScreenState extends ConsumerState<EntryFormScreen> {
       return;
     }
 
-    if (!formState.biometricVerified) {
-      // Only hard-block when this device is actually capable of biometric
-      // auth — a test device with no fingerprint/face hardware shouldn't
-      // make the rest of the app unusable. The entry is still saved as
-      // genuinely unverified (never faked) when this bypass applies.
-      final unavailable = await BiometricAuth.unavailableReason();
-      if (unavailable == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Verify your identity (fingerprint/face) before submitting')),
-          );
-        }
-        return;
+    // A person checks every value (design, section 2): values a reader filled in must be ticked.
+    final notifier = ref.read(entryFormProvider.notifier);
+    if (notifier.uncheckedFilled.isNotEmpty) {
+      if (!await _confirmAllChecked(notifier.uncheckedFilled.length)) return;
+      notifier.checkAll();
+    }
+
+    // Which server log this is: the generator's screen, today, Time or Noon.
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    final cfg = ServerConfig.fromJson(await ref.read(authServiceProvider).cachedConfig(session.user.username));
+    if (cfg == null || !cfg.generators.containsKey(widget.generatorNumber)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('The LogBridge server has no Generator ${widget.generatorNumber} log yet. '
+              'Update the server, then sign in again with a connection.'),
+        ));
       }
+      return;
+    }
+    final now = DateTime.now();
+    final logId = cfg.logId(widget.generatorNumber, now, formState.readingSlot!);
+    final existing = await ref.read(logbookRepositoryProvider).statusOf(logId);
+    if (existing == 'submitted' || existing == 'approved') {
+      if (mounted) {
+        final slot = formState.readingSlot == 'noon' ? 'Noon' : 'Time';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text("Generator ${widget.generatorNumber}'s $slot log for today is already "
+              "${existing == 'approved' ? 'signed' : 'submitted'}."),
+        ));
+      }
+      return;
     }
 
     final categoryByKey = <String, ParamCategory>{
@@ -81,28 +101,66 @@ class _EntryFormScreenState extends ConsumerState<EntryFormScreen> {
       engineId: 'Aux Engine ${widget.generatorNumber} Local Start-Stop Panel',
       generatorNumber: widget.generatorNumber,
       readingSlot: formState.readingSlot,
-      timestamp: DateTime.now(),
+      timestamp: now,
       notes: formState.notes,
       photoPath: formState.photoPath,
       pdfPath: formState.pdfPath,
       hmiPhotoPath: formState.hmiPhotoPath,
       operatorName: ref.read(currentOperatorProvider),
-      biometricVerified: formState.biometricVerified,
       paramValues: formState.values,
       paramPhotos: formState.paramPhotos,
       groupComments: formState.groupComments,
+      logId: logId,
+      status: 'submitted',
+      ocrValues: formState.ocrValues,
     );
 
     await ref.read(logbookRepositoryProvider).saveEntry(entry, categoryByKey: categoryByKey);
-    ref.read(entryFormProvider.notifier).reset();
+    final sync = ref.read(syncProvider.notifier);
+    await sync.queueSubmit(entry, cfg);
+    notifier.reset();
     ref.invalidate(recentEntriesProvider);
+    sync.syncNow(); // goes now if the server can be reached; otherwise with the next sync
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Entry saved locally')),
+        const SnackBar(content: Text('Submitted to the Chief Engineer. It reaches the server with the next sync.')),
       );
       Navigator.of(context).pop();
     }
+  }
+
+  /// "I have compared every value with the instruments" before reader values count as checked.
+  Future<bool> _confirmAllChecked(int count) async {
+    var confirmed = false;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('Check the values from photos'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('$count value(s) came from a photo and have not been checked one by one (amber ticks).'),
+              const SizedBox(height: 12),
+              CheckboxListTile(
+                value: confirmed,
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: const Text('I have compared every value on this entry with the instruments and they are right.'),
+                onChanged: (v) => setState(() => confirmed = v ?? false),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Go back')),
+            FilledButton(onPressed: confirmed ? () => Navigator.pop(ctx, true) : null, child: Text('Mark $count as checked')),
+          ],
+        ),
+      ),
+    );
+    return ok == true;
   }
 
   @override
@@ -142,12 +200,6 @@ class _EntryFormScreenState extends ConsumerState<EntryFormScreen> {
                   icon: Icons.picture_as_pdf_outlined,
                   title: 'Documents',
                   children: [PhotoUploadField(entryId: _entryId, showLabel: false)],
-                ),
-                const SizedBox(height: 16),
-                const _Section(
-                  icon: Icons.fingerprint,
-                  title: 'Biometric Authentication',
-                  children: [_BiometricAuthField()],
                 ),
                 const SizedBox(height: 28),
                 _SubmitButton(onPressed: () => _submit(config.remoteParams, config.localParams)),
@@ -202,110 +254,6 @@ class _ReadingSlotSelector extends ConsumerWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// Replaces the old drawn-signature requirement — submitting now requires
-/// a real device fingerprint/face check, tying the entry to whoever is
-/// actually signed in rather than a hand-drawn mark anyone could imitate.
-class _BiometricAuthField extends ConsumerStatefulWidget {
-  const _BiometricAuthField();
-
-  @override
-  ConsumerState<_BiometricAuthField> createState() => _BiometricAuthFieldState();
-}
-
-class _BiometricAuthFieldState extends ConsumerState<_BiometricAuthField> {
-  bool _checking = false;
-  String? _unavailableReason;
-
-  Future<void> _authenticate() async {
-    setState(() {
-      _checking = true;
-      _unavailableReason = null;
-    });
-
-    final unavailable = await BiometricAuth.unavailableReason();
-    if (unavailable != null) {
-      if (mounted) {
-        setState(() {
-          _checking = false;
-          _unavailableReason = unavailable;
-        });
-      }
-      return;
-    }
-
-    final operator = ref.read(currentOperatorProvider) ?? 'operator';
-    final ok = await BiometricAuth.authenticate(
-      'Verify your identity to submit this logbook entry as $operator',
-    );
-
-    if (!mounted) return;
-    setState(() => _checking = false);
-    if (ok) {
-      ref.read(entryFormProvider.notifier).setBiometricVerified(true);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Biometric verification failed or was cancelled')),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final verified = ref.watch(entryFormProvider.select((s) => s.biometricVerified));
-    final operator = ref.watch(currentOperatorProvider);
-
-    if (verified) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: AppColors.good.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.good.withValues(alpha: 0.4)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.verified_user, color: AppColors.good, size: 20),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Verified — ${operator ?? 'Operator'}',
-                style: const TextStyle(color: AppColors.good, fontWeight: FontWeight.w700),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        OutlinedButton.icon(
-          onPressed: _checking ? null : _authenticate,
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.cyan,
-            side: const BorderSide(color: AppColors.cyan),
-            minimumSize: const Size(double.infinity, 48),
-          ),
-          icon: _checking
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.cyan),
-                )
-              : const Icon(Icons.fingerprint),
-          label: Text(_checking ? 'Checking…' : 'Verify Identity to Submit'),
-        ),
-        if (_unavailableReason != null) ...[
-          const SizedBox(height: 8),
-          Text(_unavailableReason!, style: const TextStyle(color: AppColors.alarm, fontSize: 12.5)),
-        ],
-      ],
     );
   }
 }
@@ -747,7 +695,8 @@ class _LoadReadout extends ConsumerWidget {
             padding: EdgeInsets.only(bottom: 3),
             child: Text('kW', style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w600, fontSize: 15)),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 6),
+          CheckTick(paramKey: definition.key),
           IconButton(
             icon: const Icon(Icons.edit, size: 16),
             color: AppColors.cyan,
@@ -823,7 +772,7 @@ class _SubmitButton extends StatelessWidget {
                 Icon(Icons.check_circle, color: Colors.white, size: 22),
                 SizedBox(width: 10),
                 Text(
-                  'SUBMIT ENTRY',
+                  'SUBMIT TO CHIEF ENGINEER',
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16, letterSpacing: 0.6),
                 ),
               ],

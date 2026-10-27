@@ -167,14 +167,14 @@ Future<void> showOcrReviewDialog(
   var count = 0;
   for (final r in readings) {
     if (selected[r.paramKey] == true) {
-      notifier.setValue(r.paramKey, r.value);
+      notifier.setReaderValue(r.paramKey, r.value); // unchecked until a person ticks it
       count++;
     }
   }
 
   if (context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Applied $count value(s) from OCR — review them on the form before submitting.')),
+      SnackBar(content: Text('Applied $count value(s) from OCR. Each shows an amber tick until you check it against the screen.')),
     );
   }
 }

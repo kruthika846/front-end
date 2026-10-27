@@ -232,6 +232,15 @@ class AuthService {
     return (jsonDecode(cached) as Map<String, dynamic>)['config'] as Map<String, dynamic>?;
   }
 
+  /// A newer vessel configuration from the server (sync fetches it), kept for offline use.
+  Future<void> storeConfig(String username, Map<String, dynamic> config) async {
+    final raw = await store.read(_userKey(username.toLowerCase()));
+    if (raw == null) return;
+    final c = jsonDecode(raw) as Map<String, dynamic>;
+    c['config'] = config;
+    await store.write(_userKey(username.toLowerCase()), jsonEncode(c));
+  }
+
   /// Sign out: the session ends; the offline check stays, so this user can sign in here again.
   Future<void> signOut() => store.delete(_kSession);
 

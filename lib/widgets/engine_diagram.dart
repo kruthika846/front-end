@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/param_definition.dart';
 import '../providers/entry_form_provider.dart';
 import '../theme/app_colors.dart';
+import 'check_tick.dart';
 import 'edit_value_dialog.dart';
 import 'panel_comment_field.dart';
 import 'synced_text_field.dart';
@@ -303,6 +304,7 @@ class _CylinderCap extends ConsumerWidget {
                   ),
                 ),
               ),
+              Positioned(top: -6, left: -6, child: CheckTick(paramKey: definition.key)),
               Positioned(
                 bottom: -6,
                 right: -6,
@@ -369,6 +371,7 @@ class _DiamondReading extends ConsumerWidget {
                 validator: (v) => (v == null || v.trim().isEmpty) ? '' : null,
               ),
             ),
+            Positioned(top: -6, left: -6, child: CheckTick(paramKey: definition.key)),
             Positioned(
               bottom: -6,
               right: -6,

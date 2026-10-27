@@ -6,6 +6,7 @@ import '../models/logbook_entry.dart';
 import '../models/param_definition.dart';
 import '../providers/repository_providers.dart';
 import '../theme/app_colors.dart';
+import '../widgets/log_status_chip.dart';
 
 /// Read-only summary of one saved entry. Pulls the same parameter config
 /// (labels, units, groups) the entry form used, so a saved reading shows
@@ -37,7 +38,15 @@ class EntryDetailScreen extends ConsumerWidget {
               const SizedBox(height: 4),
               Text(dateFormat.format(entry.timestamp), style: const TextStyle(color: AppColors.textMuted)),
               const SizedBox(height: 12),
-              _VerificationBadge(entry: entry),
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: [LogStatusChip(entry: entry), _VerificationBadge(entry: entry)],
+              ),
+              if (entry.rejectReason != null && (entry.status == 'rejected' || entry.status == 'draft')) ...[
+                const SizedBox(height: 8),
+                Text(entry.rejectReason!, style: const TextStyle(color: AppColors.alarm)),
+              ],
               const SizedBox(height: 20),
               if (remoteGroups.isNotEmpty) ...[
                 const _SectionTitle(icon: Icons.satellite_alt, text: 'Remote Parameters', color: AppColors.cyan),
@@ -140,6 +149,10 @@ class _VerificationBadge extends StatelessWidget {
         color: AppColors.textMuted,
         text: 'Signed (legacy entry — see signature below)',
       );
+    }
+    // a server log: the person who captured it is recorded there; the PIN signature comes from the signer
+    if (entry.status != 'local' && entry.operatorName != null) {
+      return _badge(icon: Icons.person_outline, color: AppColors.textMuted, text: 'Captured by ${entry.operatorName}');
     }
     return _badge(icon: Icons.help_outline, color: AppColors.alarm, text: 'No verification on record');
   }

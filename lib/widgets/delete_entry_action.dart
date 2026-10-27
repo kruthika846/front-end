@@ -12,6 +12,14 @@ import '../theme/app_colors.dart';
 /// removed. Used identically from both screens so deletion always means
 /// the same thing everywhere it appears.
 Future<void> confirmAndDeleteEntry(BuildContext context, WidgetRef ref, LogbookEntry entry) async {
+  // A log on the server is the record: removing the tablet's copy would hide it here without
+  // changing it there (and a signed log never changes). Only tablet-only entries can go.
+  if (entry.status == 'submitted' || entry.status == 'approved' || entry.status == 'rejected') {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('This entry is a log on the LogBridge server, so it cannot be deleted here.')),
+    );
+    return;
+  }
   final unavailable = await BiometricAuth.unavailableReason();
   if (unavailable == null) {
     // Hardware is available on this device — verification is mandatory.
