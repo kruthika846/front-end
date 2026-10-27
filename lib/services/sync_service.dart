@@ -128,7 +128,10 @@ class SyncService extends StateNotifier<SyncState> {
   /// The operations that put [entry] on the server as its log, submitted for signing:
   /// the log, every value (checked, with what the reader suggested), every photo's details,
   /// then the submit. They wait in the outbox until the server has them.
-  Future<void> queueSubmit(LogbookEntry entry, ServerConfig cfg) async {
+  ///
+  /// [previous]: the same log before it was corrected (sent back): values cleared since are
+  /// sent as empty, and photos the server already has are not sent again.
+  Future<void> queueSubmit(LogbookEntry entry, ServerConfig cfg, {LogbookEntry? previous}) async {
     final gen = cfg.generators[entry.generatorNumber ?? 1]!;
     final logId = entry.logId!;
     final now = DateTime.now().toUtc().toIso8601String();
@@ -154,7 +157,15 @@ class SyncService extends StateNotifier<SyncState> {
             'flags': <String>[],
             'at': now,
           },
+      for (final k in previous?.paramValues.keys ?? const <String>[])
+        if ((entry.paramValues[k] ?? '').trim().isEmpty && gen.dataPoints.containsKey(k))
+          {'type': 'reading.set', 'log_id': logId, 'data_point_id': gen.dataPoints[k], 'value': null, 'confirmed': true, 'at': now},
     ];
+    final db = await AppDatabase.instance.database;
+    final alreadySent = {
+      for (final r in await db.query('sync_photos', columns: ['path'], where: 'entry_id = ? AND rejected IS NULL', whereArgs: [entry.id]))
+        r['path'] as String,
+    };
 
     // every picture of the entry: HMI screen, gauge photos, the whole-entry photo and PDF
     final files = <String>{
@@ -164,7 +175,7 @@ class SyncService extends StateNotifier<SyncState> {
       if (entry.pdfPath != null) entry.pdfPath!,
     };
     final photos = <Map<String, Object?>>[];
-    for (final path in files) {
+    for (final path in files.difference(alreadySent)) {
       final mime = mimeOf(path);
       final f = File(path);
       if (mime == null || !await f.exists()) continue;
@@ -183,7 +194,6 @@ class SyncService extends StateNotifier<SyncState> {
     }
     ops.add({'type': 'log.submit', 'log_id': logId, 'at': now});
 
-    final db = await AppDatabase.instance.database;
     await db.transaction((txn) async {
       for (final p in photos) {
         await txn.insert('sync_photos', p, conflictAlgorithm: ConflictAlgorithm.replace);

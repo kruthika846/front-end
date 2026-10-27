@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/logbook_entry.dart';
 
 /// In-progress state for the entry currently being filled out.
 /// Nothing here touches the database — this is pure UI state.
@@ -149,6 +150,20 @@ class EntryFormNotifier extends StateNotifier<EntryFormState> {
   }
 
   void reset() => state = const EntryFormState();
+
+  /// A sent-back log, opened to be corrected: everything it had. Its values were checked when
+  /// it was submitted; what the reader suggested is kept.
+  void loadFrom(LogbookEntry e) => state = EntryFormState(
+        values: Map.of(e.paramValues),
+        paramPhotos: Map.of(e.paramPhotos),
+        notes: e.notes ?? '',
+        photoPath: e.photoPath,
+        pdfPath: e.pdfPath,
+        hmiPhotoPath: e.hmiPhotoPath,
+        groupComments: Map.of(e.groupComments),
+        readingSlot: e.readingSlot,
+        ocrValues: Map.of(e.ocrValues),
+      );
 }
 
 final entryFormProvider = StateNotifierProvider.autoDispose<EntryFormNotifier, EntryFormState>((ref) {

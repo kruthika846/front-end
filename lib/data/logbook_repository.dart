@@ -11,6 +11,9 @@ class LogbookRepository {
     final db = await AppDatabase.instance.database;
 
     await db.transaction((txn) async {
+      // saving an entry again (a sent-back log, corrected) replaces its values and comments
+      await txn.delete('parameter_values', where: 'entry_id = ?', whereArgs: [entry.id]);
+      await txn.delete('group_comments', where: 'entry_id = ?', whereArgs: [entry.id]);
       await txn.insert(
         'logbook_entries',
         {

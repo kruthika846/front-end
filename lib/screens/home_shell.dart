@@ -9,6 +9,7 @@ import '../theme/app_colors.dart';
 import 'department_screen.dart';
 import 'log_book_screen.dart';
 import 'me_screen.dart';
+import 'sign_screen.dart';
 import 'sync_screen.dart';
 
 class _Tab {
@@ -62,12 +63,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with WidgetsBindingObserv
         if (user.canCapture) const _Tab('Capture', Icons.photo_camera_outlined, DepartmentScreen()),
         if (user.role != Roles.admin) const _Tab('Log book', Icons.menu_book_outlined, LogBookScreen()),
         if (user.canCapture) const _Tab('Sync', Icons.sync, SyncScreen()),
-        if (user.canSign)
-          const _Tab('Sign', Icons.draw_outlined, _ComingTab(
-            title: 'Sign',
-            text: 'Logs waiting for your signature, by day: sign with your 6-digit PIN, or open one and send it back '
-                'with a reason. Coming in Phase 3.',
-          )),
+        if (user.canSign) const _Tab('Sign', Icons.draw_outlined, SignScreen()),
         if (user.role == Roles.viewer) const _Tab('Dashboard', Icons.insights_outlined, _DashboardTab()),
         if (user.role == Roles.admin)
           const _Tab('Users', Icons.group_outlined, _ComingTab(

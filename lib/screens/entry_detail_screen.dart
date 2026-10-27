@@ -7,6 +7,8 @@ import '../models/param_definition.dart';
 import '../providers/repository_providers.dart';
 import '../theme/app_colors.dart';
 import '../widgets/log_status_chip.dart';
+import '../providers/session_provider.dart';
+import 'entry_form_screen.dart';
 
 /// Read-only summary of one saved entry. Pulls the same parameter config
 /// (labels, units, groups) the entry form used, so a saved reading shows
@@ -46,6 +48,18 @@ class EntryDetailScreen extends ConsumerWidget {
               if (entry.rejectReason != null && (entry.status == 'rejected' || entry.status == 'draft')) ...[
                 const SizedBox(height: 8),
                 Text(entry.rejectReason!, style: const TextStyle(color: AppColors.alarm)),
+              ],
+              // a sent-back (or refused) log can be corrected and submitted again; a signed one never changes
+              if ((entry.status == 'rejected' || entry.status == 'draft') &&
+                  (ref.watch(sessionProvider)?.user.canCapture ?? false)) ...[
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () => Navigator.of(context).pushReplacement(MaterialPageRoute(
+                    builder: (_) => EntryFormScreen(generatorNumber: entry.generatorNumber ?? 1, correcting: entry),
+                  )),
+                  icon: const Icon(Icons.edit_note),
+                  label: const Text('Correct and resubmit'),
+                ),
               ],
               const SizedBox(height: 20),
               if (remoteGroups.isNotEmpty) ...[

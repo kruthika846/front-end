@@ -26,7 +26,12 @@ import '../widgets/synced_text_field.dart';
 
 class EntryFormScreen extends ConsumerStatefulWidget {
   final int generatorNumber;
-  const EntryFormScreen({super.key, required this.generatorNumber});
+
+  /// A log the Chief Engineer sent back (or the server refused), opened to be corrected and
+  /// submitted again as the same server log. Null for a new entry.
+  final LogbookEntry? correcting;
+
+  const EntryFormScreen({super.key, required this.generatorNumber, this.correcting});
 
   @override
   ConsumerState<EntryFormScreen> createState() => _EntryFormScreenState();
@@ -37,7 +42,23 @@ class _EntryFormScreenState extends ConsumerState<EntryFormScreen> {
 
   // Generated once per screen visit so photo/signature files for this draft
   // share a stable name, even before the entry is actually saved.
-  late final String _entryId = DateTime.now().microsecondsSinceEpoch.toString();
+  late final String _entryId = widget.correcting?.id ?? DateTime.now().microsecondsSinceEpoch.toString();
+
+  // A log being corrected: its values are loaded before the form is drawn (the panel comment
+  // fields read theirs once, when they appear).
+  late bool _ready = widget.correcting == null;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.correcting;
+    if (e != null) {
+      Future.microtask(() {
+        ref.read(entryFormProvider.notifier).loadFrom(e);
+        if (mounted) setState(() => _ready = true);
+      });
+    }
+  }
 
   Future<void> _submit(List<ParamDefinition> remoteParams, List<ParamDefinition> localParams) async {
     final formOk = _formKey.currentState?.validate() ?? false;
@@ -77,10 +98,11 @@ class _EntryFormScreenState extends ConsumerState<EntryFormScreen> {
       }
       return;
     }
-    final now = DateTime.now();
-    final logId = cfg.logId(widget.generatorNumber, now, formState.readingSlot!);
+    final correcting = widget.correcting;
+    final now = correcting?.timestamp ?? DateTime.now();
+    final logId = correcting?.logId ?? cfg.logId(widget.generatorNumber, now, formState.readingSlot!);
     final existing = await ref.read(logbookRepositoryProvider).statusOf(logId);
-    if (existing == 'submitted' || existing == 'approved') {
+    if (correcting == null && (existing == 'submitted' || existing == 'approved')) {
       if (mounted) {
         final slot = formState.readingSlot == 'noon' ? 'Noon' : 'Time';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -117,7 +139,7 @@ class _EntryFormScreenState extends ConsumerState<EntryFormScreen> {
 
     await ref.read(logbookRepositoryProvider).saveEntry(entry, categoryByKey: categoryByKey);
     final sync = ref.read(syncProvider.notifier);
-    await sync.queueSubmit(entry, cfg);
+    await sync.queueSubmit(entry, cfg, previous: correcting);
     notifier.reset();
     ref.invalidate(recentEntriesProvider);
     sync.syncNow(); // goes now if the server can be reached; otherwise with the next sync
@@ -168,17 +190,22 @@ class _EntryFormScreenState extends ConsumerState<EntryFormScreen> {
     final configAsync = ref.watch(parameterConfigProvider);
 
     return Scaffold(
-      appBar: AppBar(title: Text('New Entry — Generator ${widget.generatorNumber}')),
+      appBar: AppBar(
+        title: Text(widget.correcting == null
+            ? 'New Entry — Generator ${widget.generatorNumber}'
+            : 'Correct — Generator ${widget.generatorNumber} · ${widget.correcting!.readingSlot == 'noon' ? 'Noon' : 'Time'}'),
+      ),
       body: configAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, st) => Center(child: Text('Failed to load parameters: $e')),
         data: (config) {
+          if (!_ready) return const Center(child: CircularProgressIndicator());
           return Form(
             key: _formKey,
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
               children: [
-                const _ReadingSlotSelector(),
+                if (widget.correcting != null) _SentBackNotice(entry: widget.correcting!) else const _ReadingSlotSelector(),
                 const SizedBox(height: 16),
                 _RemoteParametersPanel(remoteParams: config.remoteParams, entryId: _entryId, generatorNumber: widget.generatorNumber),
                 const SizedBox(height: 16),
@@ -207,6 +234,38 @@ class _EntryFormScreenState extends ConsumerState<EntryFormScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Why a log came back, above the form while it is corrected.
+class _SentBackNotice extends StatelessWidget {
+  final LogbookEntry entry;
+  const _SentBackNotice({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.alarm.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.alarm.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(entry.status == 'rejected' ? 'Sent back by the Chief Engineer' : 'Not accepted by the server',
+              style: const TextStyle(color: AppColors.alarm, fontWeight: FontWeight.w800)),
+          if (entry.rejectReason != null) ...[
+            const SizedBox(height: 4),
+            Text(entry.rejectReason!),
+          ],
+          const SizedBox(height: 6),
+          const Text('Correct what is needed and submit again. It stays the same log.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 12.5)),
+        ],
       ),
     );
   }
