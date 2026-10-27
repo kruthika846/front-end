@@ -45,7 +45,8 @@ class MainActivity : FlutterFragmentActivity() {
         }
 
         // "logbridge/ocr": photo readers that run on this tablet (lib/services/device_ocr.dart).
-        //   readGauge(path, unit) -> gauge-reader's reading of a needle gauge, as JSON
+        //   readGauge(path, unit, debug) -> gauge-reader's reading of a needle gauge, as JSON (and the
+        //                            marked-up picture written to `debug`)
         //   readHmi(path)         -> an HMI screen's labelled values, as JSON, by DSR Extract running on
         //                            the tablet (dsr_device.py; ML Kit reader if that fails)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "logbridge/ocr").setMethodCallHandler { call, result ->
@@ -55,7 +56,7 @@ class MainActivity : FlutterFragmentActivity() {
                 return@setMethodCallHandler
             }
             val run: (() -> String)? = when (call.method) {
-                "readGauge" -> { { Python.getInstance().getModule("app_gauge").callAttr("read", path, call.argument<String>("unit") ?: "").toString() } }
+                "readGauge" -> { { Python.getInstance().getModule("app_gauge").callAttr("read", path, call.argument<String>("unit") ?: "", call.argument<String>("debug") ?: "").toString() } }
                 "readHmi" -> { { Python.getInstance().getModule("dsr_device").callAttr("read", path).toString() } }
                 else -> null
             }

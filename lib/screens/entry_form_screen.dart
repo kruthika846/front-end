@@ -15,7 +15,7 @@ import '../theme/app_colors.dart';
 import '../widgets/dynamic_param_field.dart';
 import '../widgets/edit_value_dialog.dart';
 import '../widgets/engine_diagram.dart';
-import '../widgets/gauge_dial.dart';
+import '../widgets/gauge_capture_panel.dart';
 import '../widgets/ocr_review_dialog.dart';
 import '../widgets/ocr_settings_dialog.dart';
 import '../widgets/panel_comment_field.dart';
@@ -548,10 +548,12 @@ class _GroupLabel extends StatelessWidget {
   }
 }
 
-/// The whole "Local Parameters" area — the 30 manually-read gauge values
-/// grouped the way an operator would actually walk the engine room: the two
-/// six-unit banks (JCW / exhaust outlet temps) collapse into dropdowns like
-/// the cylinder bank, everything else sits in labeled color-coded clusters.
+/// The whole "Local Parameters" area — one common gauge capture at the top
+/// (each photo gets its own result card and is saved into the parameter the
+/// operator picks), then the 30 gauge values as chips, grouped the way an
+/// operator would actually walk the engine room: the two six-unit banks (JCW /
+/// exhaust outlet temps) collapse into dropdowns like the cylinder bank,
+/// everything else sits in labeled color-coded clusters.
 class _LocalParametersPanel extends StatelessWidget {
   final List<ParamDefinition> localParams;
   final String entryId;
@@ -595,7 +597,9 @@ class _LocalParametersPanel extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
+            GaugeCapturePanel(localParams: localParams, entryId: entryId),
+            const SizedBox(height: 22),
             for (final group in expandableGroups) ...[
               _ExpandableChipGroup(group: group, entryId: entryId),
               const SizedBox(height: 12),
@@ -606,7 +610,7 @@ class _LocalParametersPanel extends StatelessWidget {
               Wrap(
                 spacing: 12,
                 runSpacing: 14,
-                children: group.params.map((p) => GaugeDial(definition: p, accent: group.color, entryId: entryId)).toList(),
+                children: group.params.map((p) => DynamicParamField(definition: p, compact: true, accent: group.color)).toList(),
               ),
               const SizedBox(height: 10),
               PanelCommentField(groupKey: 'local::${group.title}'),
@@ -683,7 +687,7 @@ class _ExpandableChipGroup extends ConsumerWidget {
               Wrap(
                 spacing: 12,
                 runSpacing: 14,
-                children: group.params.map((p) => GaugeDial(definition: p, accent: group.color, entryId: entryId)).toList(),
+                children: group.params.map((p) => DynamicParamField(definition: p, compact: true, accent: group.color)).toList(),
               ),
               const SizedBox(height: 12),
               PanelCommentField(groupKey: 'local::${group.title}'),

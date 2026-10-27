@@ -2,13 +2,14 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 
 /// Photo readers that run on this tablet itself, inside the app (Python +
-/// OpenCV + ML Kit text recognition, see android/app/src/main/python and
+/// OpenCV + RapidOCR on onnxruntime, see android/app/src/main/python and
 /// MainActivity.kt). No network needed.
 ///
 ///  - [readGauge]: gauge-reader (the analog gauge detector) reads a needle
-///    gauge photo — value, unit, how sure it is.
-///  - [readHmi]: a simpler HMI screen reader, used only when DSR Extract
-///    (the OCR server on the PC/ship network) can't be reached.
+///    gauge photo — value, unit, scale, needle, how sure it is — and draws
+///    what it found on a copy of the photo.
+///  - [readHmi]: DSR Extract reads an HMI screen photo, used when the DSR
+///    Extract server on the PC/ship network can't be reached.
 class DeviceOcr {
   static const _channel = MethodChannel('logbridge/ocr');
 
@@ -25,51 +26,62 @@ class DeviceOcr {
 
   static Future<Map<String, dynamic>> readHmi(String path) => _call('readHmi', {'path': path});
 
-  static Future<GaugeReading> readGauge(String path, String unit) async {
-    return GaugeReading.fromJson(await _call('readGauge', {'path': path, 'unit': unit}));
+  /// [debugPath]: where to write the marked-up picture (needle, dial, numbers read).
+  static Future<GaugeReading> readGauge(String path, {String unit = '', String? debugPath}) async {
+    return GaugeReading.fromJson(await _call('readGauge', {'path': path, 'unit': unit, 'debug': debugPath ?? ''}));
   }
 }
 
-/// What gauge-reader made of one gauge photo. [value] is already in the
-/// parameter's own unit when the dial shows another one (e.g. bar -> MPa).
+/// What gauge-reader made of one gauge photo.
 class GaugeReading {
   final String? error;
+
+  /// The reading in the unit printed on the dial.
   final double? value;
   final String unit;
-  final String dialValue;
-  final String dialUnit;
+
+  /// 'pressure', 'temperature', ... or null when it couldn't tell.
+  final String? type;
   final double confidence;
   final String status;
   final List<String> notes;
   final int gaugesFound;
 
+  /// The marked-up copy of the photo, when it was written.
+  final String? debugImage;
+
+  /// The lines gauge-reader prints for a reading (label, type, reading, also, scale,
+  /// needle, gauge_at, time, status, unit), already formatted.
+  final Map<String, String> display;
+
   const GaugeReading({
     this.error,
     this.value,
     this.unit = '',
-    this.dialValue = '',
-    this.dialUnit = '',
+    this.type,
     this.confidence = 0,
     this.status = '',
     this.notes = const [],
     this.gaugesFound = 0,
+    this.debugImage,
+    this.display = const {},
   });
 
-  bool get converted => dialUnit.isNotEmpty && unit.isNotEmpty && dialUnit != unit;
-
   factory GaugeReading.fromJson(Map<String, dynamic> j) {
-    if (j['error'] != null) return GaugeReading(error: j['error'] as String);
-    final dial = double.tryParse('${j['value']}');
-    final inWanted = j['value_in_wanted_unit'] as num?;
+    final display = ((j['display'] as Map?) ?? const {}).map((k, v) => MapEntry('$k', '$v'));
+    if (j['error'] != null) {
+      return GaugeReading(error: j['error'] as String, debugImage: j['debug_image'] as String?);
+    }
     return GaugeReading(
-      value: inWanted?.toDouble() ?? dial,
-      unit: (j['wanted_unit'] as String?) ?? (j['unit'] as String? ?? ''),
-      dialValue: '${j['value'] ?? ''}',
-      dialUnit: j['unit'] as String? ?? '',
+      value: double.tryParse('${j['value']}'),
+      unit: j['unit'] as String? ?? '',
+      type: j['type'] as String?,
       confidence: (j['confidence'] as num?)?.toDouble() ?? 0,
       status: j['status'] as String? ?? '',
       notes: ((j['notes'] as List?) ?? const []).map((e) => '$e').toList(),
       gaugesFound: (j['gauges_found'] as num?)?.toInt() ?? 1,
+      debugImage: j['debug_image'] as String?,
+      display: display,
     );
   }
 }
