@@ -3,7 +3,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'screens/login_screen.dart';
+import 'screens/app_gate.dart';
+import 'screens/home_shell.dart';
 import 'theme/app_colors.dart';
 
 void main() {
@@ -99,7 +100,10 @@ class LogBridgeApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const LoginScreen(),
+      navigatorKey: appNavigatorKey,
+      // sign-in and the lock are drawn above every screen (see AppGate)
+      builder: (context, child) => AppGate(child: child ?? const SizedBox.shrink()),
+      home: const HomeShell(),
     );
   }
 }
