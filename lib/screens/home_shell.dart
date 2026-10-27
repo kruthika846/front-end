@@ -11,6 +11,7 @@ import 'log_book_screen.dart';
 import 'me_screen.dart';
 import 'sign_screen.dart';
 import 'sync_screen.dart';
+import 'users_screen.dart';
 
 class _Tab {
   final String label;
@@ -65,12 +66,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with WidgetsBindingObserv
         if (user.canCapture) const _Tab('Sync', Icons.sync, SyncScreen()),
         if (user.canSign) const _Tab('Sign', Icons.draw_outlined, SignScreen()),
         if (user.role == Roles.viewer) const _Tab('Dashboard', Icons.insights_outlined, _DashboardTab()),
-        if (user.role == Roles.admin)
-          const _Tab('Users', Icons.group_outlined, _ComingTab(
-            title: 'Users',
-            text: 'Add users, deactivate them, reset passwords and PINs. Coming in Phase 4 — until then use the '
-                'Administrator page of the LogBridge server.',
-          )),
+        if (user.role == Roles.admin) const _Tab('Users', Icons.group_outlined, UsersScreen()),
         const _Tab('Me', Icons.person_outline, MeScreen()),
       ];
 
@@ -144,29 +140,6 @@ class _SyncBanner extends ConsumerWidget {
       color: color.withValues(alpha: 0.16),
       padding: EdgeInsets.fromLTRB(16, MediaQuery.of(context).padding.top + 6, 16, 6),
       child: Text(text, style: TextStyle(color: color, fontSize: 12.5, fontWeight: FontWeight.w600)),
-    );
-  }
-}
-
-/// A tab whose screen arrives in a later phase: says what it will do.
-class _ComingTab extends StatelessWidget {
-  final String title;
-  final String text;
-  const _ComingTab({required this.title, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: Text(text, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textMuted, fontSize: 15)),
-          ),
-        ),
-      ),
     );
   }
 }

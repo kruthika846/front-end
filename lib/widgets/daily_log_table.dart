@@ -93,7 +93,14 @@ class _LogColumn {
 /// readings instead.
 class DailyLogTable extends ConsumerStatefulWidget {
   final int generatorNumber;
-  const DailyLogTable({super.key, required this.generatorNumber});
+
+  /// Logs to show instead of this tablet's own entries (the Log book tab passes the server's).
+  final List<LogbookEntry>? entries;
+
+  /// No delete buttons: the Log book shows server logs, which are not deleted from a tablet.
+  final bool readOnly;
+
+  const DailyLogTable({super.key, required this.generatorNumber, this.entries, this.readOnly = false});
 
   @override
   ConsumerState<DailyLogTable> createState() => _DailyLogTableState();
@@ -132,7 +139,9 @@ class _DailyLogTableState extends ConsumerState<DailyLogTable> {
 
   @override
   Widget build(BuildContext context) {
-    final entriesAsync = ref.watch(recentEntriesProvider(widget.generatorNumber));
+    final entriesAsync = widget.entries != null
+        ? AsyncValue<List<LogbookEntry>>.data(widget.entries!)
+        : ref.watch(recentEntriesProvider(widget.generatorNumber));
 
     return entriesAsync.when(
       loading: () => const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
@@ -196,7 +205,7 @@ class _DailyLogTableState extends ConsumerState<DailyLogTable> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text('${dateFormat.format(c.date)}\n${_headerSecondLine(c, timeFormat)}'),
-                                if (c.entry != null) ...[
+                                if (c.entry != null && !widget.readOnly) ...[
                                   const SizedBox(width: 2),
                                   InkWell(
                                     borderRadius: BorderRadius.circular(999),
@@ -324,7 +333,8 @@ class _DailyLogTableState extends ConsumerState<DailyLogTable> {
   String _headerSecondLine(_LogColumn c, DateFormat timeFormat) {
     if (c.entry == null) return c.slotLabel;
     final time = timeFormat.format(c.entry!.timestamp);
-    return c.slotLabel == 'Noon' ? 'Noon / $time' : time;
+    final signed = c.entry!.status == 'approved' ? ' ✓' : ''; // signed and final
+    return c.slotLabel == 'Noon' ? 'Noon / $time$signed' : '$time$signed';
   }
 
   /// The entry's explicitly chosen Time/Noon column, or — for legacy
