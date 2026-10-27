@@ -15,7 +15,7 @@ class RecordsList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final entriesAsync = ref.watch(recentEntriesProvider);
+    final entriesAsync = ref.watch(recentEntriesProvider(generatorNumber));
     final dateFormat = DateFormat('dd MMM yyyy, HH:mm');
     final theme = Theme.of(context);
 

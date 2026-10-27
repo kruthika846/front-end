@@ -32,14 +32,16 @@ class LogbookRepository {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
 
-      for (final e in entry.paramValues.entries) {
-        final category = categoryByKey[e.key] ?? ParamCategory.remote;
+      // Every parameter with a value or a gauge photo: a photo taken without typing the value
+      // (yet) must not be lost.
+      for (final key in {...entry.paramValues.keys, ...entry.paramPhotos.keys}) {
+        final category = categoryByKey[key] ?? ParamCategory.remote;
         await txn.insert('parameter_values', {
           'entry_id': entry.id,
-          'param_key': e.key,
+          'param_key': key,
           'param_category': category.name,
-          'value': e.value,
-          'photo_path': entry.paramPhotos[e.key],
+          'value': entry.paramValues[key],
+          'photo_path': entry.paramPhotos[key],
         });
       }
 
@@ -54,10 +56,18 @@ class LogbookRepository {
     });
   }
 
-  Future<List<LogbookEntry>> fetchRecentEntries({int limit = 5}) async {
+  /// The newest [limit] entries, of one generator when [generatorNumber] is
+  /// given (entries with no generator recorded are Generator 1's).
+  Future<List<LogbookEntry>> fetchRecentEntries({int limit = 5, int? generatorNumber}) async {
     final db = await AppDatabase.instance.database;
     final rows = await db.query(
       'logbook_entries',
+      where: generatorNumber == null
+          ? null
+          : generatorNumber == 1
+              ? '(generator_number = ? OR generator_number IS NULL)'
+              : 'generator_number = ?',
+      whereArgs: generatorNumber == null ? null : [generatorNumber],
       orderBy: 'entry_timestamp DESC',
       limit: limit,
     );

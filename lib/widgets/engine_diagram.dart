@@ -5,6 +5,7 @@ import '../providers/entry_form_provider.dart';
 import '../theme/app_colors.dart';
 import 'edit_value_dialog.dart';
 import 'panel_comment_field.dart';
+import 'synced_text_field.dart';
 
 /// A schematic "look" at the generator set, built from the same silhouette
 /// as the real machine's cylinder heads (rounded-top caps, a red badge on
@@ -280,8 +281,8 @@ class _CylinderCap extends ConsumerWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      TextFormField(
-                        initialValue: value,
+                      SyncedTextField(
+                        value: value,
                         textAlign: TextAlign.center,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
                         style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 18),
@@ -351,8 +352,8 @@ class _DiamondReading extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: AppColors.cyan.withValues(alpha: 0.6), width: 1.4),
               ),
-              child: TextFormField(
-                initialValue: value,
+              child: SyncedTextField(
+                value: value,
                 textAlign: TextAlign.center,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
                 style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 20),

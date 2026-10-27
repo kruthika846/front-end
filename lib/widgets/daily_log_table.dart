@@ -132,7 +132,7 @@ class _DailyLogTableState extends ConsumerState<DailyLogTable> {
 
   @override
   Widget build(BuildContext context) {
-    final entriesAsync = ref.watch(recentEntriesProvider);
+    final entriesAsync = ref.watch(recentEntriesProvider(widget.generatorNumber));
 
     return entriesAsync.when(
       loading: () => const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),

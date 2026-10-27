@@ -20,6 +20,7 @@ import '../widgets/ocr_review_dialog.dart';
 import '../widgets/ocr_settings_dialog.dart';
 import '../widgets/panel_comment_field.dart';
 import '../widgets/photo_upload_field.dart';
+import '../widgets/synced_text_field.dart';
 
 class EntryFormScreen extends ConsumerStatefulWidget {
   final int generatorNumber;
@@ -89,6 +90,7 @@ class _EntryFormScreenState extends ConsumerState<EntryFormScreen> {
       biometricVerified: formState.biometricVerified,
       paramValues: formState.values,
       paramPhotos: formState.paramPhotos,
+      groupComments: formState.groupComments,
     );
 
     await ref.read(logbookRepositoryProvider).saveEntry(entry, categoryByKey: categoryByKey);
@@ -226,8 +228,12 @@ class _BiometricAuthFieldState extends ConsumerState<_BiometricAuthField> {
 
     final unavailable = await BiometricAuth.unavailableReason();
     if (unavailable != null) {
-      if (mounted) setState(() => _checking = false);
-      setState(() => _unavailableReason = unavailable);
+      if (mounted) {
+        setState(() {
+          _checking = false;
+          _unavailableReason = unavailable;
+        });
+      }
       return;
     }
 
@@ -715,8 +721,8 @@ class _LoadReadout extends ConsumerWidget {
           const Spacer(),
           SizedBox(
             width: 90,
-            child: TextFormField(
-              initialValue: value,
+            child: SyncedTextField(
+              value: value,
               textAlign: TextAlign.right,
               keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
               style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 30),

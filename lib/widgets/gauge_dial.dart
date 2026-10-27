@@ -8,6 +8,7 @@ import '../providers/entry_form_provider.dart';
 import '../services/device_ocr.dart';
 import '../theme/app_colors.dart';
 import 'edit_value_dialog.dart';
+import 'synced_text_field.dart';
 
 /// A circular, gauge-styled reading for Local Parameters: a radial fill
 /// ring showing where the typed value sits in its min/max range (like a
@@ -167,8 +168,8 @@ class GaugeDial extends ConsumerWidget {
                       children: [
                         SizedBox(
                           width: 76,
-                          child: TextFormField(
-                            initialValue: value,
+                          child: SyncedTextField(
+                            value: value,
                             textAlign: TextAlign.center,
                             keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
                             style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 22),
