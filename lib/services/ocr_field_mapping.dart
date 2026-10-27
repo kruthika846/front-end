@@ -97,12 +97,16 @@ class MappedOcrReading {
   final String unit;
   final bool converted;
 
+  /// Not marked as this generator's on the photo (see confidentReadings): offered unticked.
+  final bool uncertain;
+
   const MappedOcrReading({
     required this.paramKey,
     required this.ocrLabel,
     required this.value,
     required this.unit,
     this.converted = false,
+    this.uncertain = false,
   });
 }
 
@@ -138,24 +142,48 @@ List<MappedOcrReading> confidentReadings(
               ? parsed
               : parsed.where((p) => p.group == null);
 
+  // (parsed value, parameter key) for one candidate, or null when it fits no parameter.
+  ({String key, String value, bool converted})? fit(({int? group, String label, OcrValue v}) p) {
+    final cyl = _cylinder.firstMatch(p.label);
+    final key = cyl != null ? 'exh_temp_cyl${cyl.group(1)}' : _labelToParamKey[_canon(p.label)];
+    if (key == null || !unitOfParam.containsKey(key)) return null;
+    final raw = p.v.value.replaceAll('−', '-').replaceAll(',', '.').trim();
+    if (double.tryParse(raw) == null) return null;
+    final inUnit = _inParamUnit(raw, p.v.unit, unitOfParam[key]!);
+    return inUnit == null ? null : (key: key, value: inUnit.value, converted: inUnit.converted);
+  }
+
   final out = <MappedOcrReading>[];
   final taken = <String>{};
   for (final p in mine) {
-    final cyl = _cylinder.firstMatch(p.label);
-    final key = cyl != null ? 'exh_temp_cyl${cyl.group(1)}' : _labelToParamKey[_canon(p.label)];
-    if (key == null || taken.contains(key) || !unitOfParam.containsKey(key)) continue;
-    final raw = p.v.value.replaceAll('−', '-').replaceAll(',', '.').trim();
-    if (double.tryParse(raw) == null) continue;
-    final inUnit = _inParamUnit(raw, p.v.unit, unitOfParam[key]!);
-    if (inUnit == null) continue;
-    taken.add(key);
-    out.add(MappedOcrReading(
-      paramKey: key,
-      ocrLabel: p.v.label,
-      value: inUnit.value,
-      unit: unitOfParam[key]!,
-      converted: inUnit.converted,
-    ));
+    final f = fit(p);
+    if (f == null || taken.contains(f.key)) continue;
+    taken.add(f.key);
+    out.add(MappedOcrReading(paramKey: f.key, ocrLabel: p.v.label, value: f.value, unit: unitOfParam[f.key]!, converted: f.converted));
+  }
+
+  // A value the OCR didn't tag with a generator can still be this generator's (e.g. its
+  // alternator box at the screen's edge). It may only fill a field this generator's block left
+  // empty, only when it is the single such candidate, and it is offered unticked: it could also
+  // be another generator's, half-visible on the photo.
+  if (useGeneratorOfPhoto == null && named.any((p) => p.group == generatorNumber)) {
+    final byKey = <String, List<(({int? group, String label, OcrValue v}), ({String key, String value, bool converted}))>>{};
+    for (final p in parsed.where((p) => p.group == null)) {
+      final f = fit(p);
+      if (f != null && !taken.contains(f.key)) byKey.putIfAbsent(f.key, () => []).add((p, f));
+    }
+    for (final e in byKey.entries) {
+      if (e.value.length != 1) continue;
+      final (p, f) = e.value.single;
+      out.add(MappedOcrReading(
+        paramKey: f.key,
+        ocrLabel: p.v.label,
+        value: f.value,
+        unit: unitOfParam[f.key]!,
+        converted: f.converted,
+        uncertain: true,
+      ));
+    }
   }
   return out;
 }

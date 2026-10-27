@@ -23,7 +23,8 @@ class OcrValue {
 
 /// Everything read from one HMI photo, and where it was read.
 class OcrScanResult {
-  /// "DSR Extract" (the OCR server) or "this tablet" (offline fallback).
+  /// "DSR Extract" (the OCR server), "DSR Extract on this tablet" (no server needed), or
+  /// "this tablet" (the simpler ML Kit reader, if DSR Extract failed on the tablet).
   final String source;
   final List<OcrValue> values;
 
@@ -130,6 +131,9 @@ class OcrService {
     final values = ((data['extracted_values'] as List?) ?? const [])
         .map((e) => OcrValue.fromJson(e as Map<String, dynamic>))
         .toList();
-    return OcrScanResult(source: 'this tablet', values: values, fallbackReason: reason);
+    // DSR Extract runs on the tablet too (dsr_device.py); the simpler ML Kit reader only if that failed
+    final onTablet = data['source'] == 'dsr-on-device' ? 'DSR Extract on this tablet' : 'this tablet';
+    final note = data['dsr_note'];   // why DSR Extract on the tablet was not used
+    return OcrScanResult(source: onTablet, values: values, fallbackReason: note == null ? reason : '$reason; $note');
   }
 }

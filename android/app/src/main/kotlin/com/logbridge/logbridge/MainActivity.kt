@@ -26,8 +26,8 @@ class MainActivity : FlutterFragmentActivity() {
         // Load Python, OpenCV and the readers in the background now, so the first photo isn't slowed by it.
         worker.execute {
             val t0 = System.currentTimeMillis()
-            runCatching { Python.getInstance().getModule("hmi_ondevice") }
-                .onSuccess { Log.i(TAG, "on-tablet readers loaded in ${System.currentTimeMillis() - t0} ms") }
+            runCatching { Python.getInstance().getModule("dsr_device").callAttr("warm") }
+                .onSuccess { Log.i(TAG, "on-tablet readers (DSR Extract, RapidOCR) loaded in ${System.currentTimeMillis() - t0} ms") }
                 .onFailure { Log.e(TAG, "on-tablet readers failed to load", it) }
             // Debug builds only: `adb shell am start -n com.logbridge.logbridge/.MainActivity
             //   --es selftest /data/local/tmp/photo.jpg --es kind gauge|hmi [--es unit MPa]` reads that
@@ -37,7 +37,7 @@ class MainActivity : FlutterFragmentActivity() {
             if (debuggable && photo != null) {
                 val t1 = System.currentTimeMillis()
                 runCatching {
-                    if (intent.getStringExtra("kind") == "hmi") Python.getInstance().getModule("hmi_ondevice").callAttr("read", photo).toString()
+                    if (intent.getStringExtra("kind") == "hmi") Python.getInstance().getModule("dsr_device").callAttr("read", photo).toString()
                     else Python.getInstance().getModule("app_gauge").callAttr("read", photo, intent.getStringExtra("unit") ?: "").toString()
                 }.onSuccess { Log.i(TAG, "selftest ${System.currentTimeMillis() - t1} ms: $it") }
                     .onFailure { Log.e(TAG, "selftest failed", it) }
@@ -46,7 +46,8 @@ class MainActivity : FlutterFragmentActivity() {
 
         // "logbridge/ocr": photo readers that run on this tablet (lib/services/device_ocr.dart).
         //   readGauge(path, unit) -> gauge-reader's reading of a needle gauge, as JSON
-        //   readHmi(path)         -> an HMI screen's labelled values, as JSON (DSR Extract's shape)
+        //   readHmi(path)         -> an HMI screen's labelled values, as JSON, by DSR Extract running on
+        //                            the tablet (dsr_device.py; ML Kit reader if that fails)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "logbridge/ocr").setMethodCallHandler { call, result ->
             val path = call.argument<String>("path")
             if (path == null) {
@@ -55,7 +56,7 @@ class MainActivity : FlutterFragmentActivity() {
             }
             val run: (() -> String)? = when (call.method) {
                 "readGauge" -> { { Python.getInstance().getModule("app_gauge").callAttr("read", path, call.argument<String>("unit") ?: "").toString() } }
-                "readHmi" -> { { Python.getInstance().getModule("hmi_ondevice").callAttr("read", path).toString() } }
+                "readHmi" -> { { Python.getInstance().getModule("dsr_device").callAttr("read", path).toString() } }
                 else -> null
             }
             if (run == null) {

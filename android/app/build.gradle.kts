@@ -71,6 +71,40 @@ flutter {
 val localProps = Properties()
 rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { localProps.load(it) }
 
+// DSR Extract runs on the tablet too (python/dsr_device.py), so HMI photos read with no server or
+// Wi-Fi give the server's results. Its code and RapidOCR (code + models) are copied in at build
+// time from a DSR Extract checkout set up with its setup (dsrExtractDir=... in local.properties,
+// e.g. C:/Users/kruth/LogBridge-DSR/dsr-extract); nothing is duplicated in this repository.
+val dsrDir = localProps.getProperty("dsrExtractDir")
+    ?: error("Set dsrExtractDir=<path to dsr-extract> in android/local.properties (DSR Extract, set up with setup.bat)")
+val dsrSitePackages = "$dsrDir/.venv/Lib/site-packages"
+val dsrPython = layout.buildDirectory.dir("generated/dsr-python").get().asFile
+
+val copyDsrPython by tasks.registering(Sync::class) {
+    into(dsrPython)
+    from("$dsrDir/dsr_extract") {
+        into("dsr_extract")
+        exclude("**/__pycache__/**", "api.py", "cli.py", "__main__.py")
+    }
+    from("$dsrSitePackages/rapidocr_onnxruntime") {
+        into("rapidocr_onnxruntime")
+        exclude("**/__pycache__/**")
+    }
+    // rapidfuzz's own pure-Python implementation (its compiled one has no Android build)
+    from("$dsrSitePackages/rapidfuzz") {
+        into("rapidfuzz")
+        include("**/*.py")
+        exclude("**/__pycache__/**", "__pyinstaller/**")
+    }
+    // wordninja as a package, so its word list can be unpacked next to it (extractPackages)
+    from("$dsrSitePackages/wordninja.py") {
+        into("wordninja")
+        rename { "__init__.py" }
+        filter { it.replace(",'wordninja','wordninja_words.txt.gz'", ",'wordninja_words.txt.gz'") }
+    }
+    from("$dsrSitePackages/wordninja/wordninja_words.txt.gz") { into("wordninja") }
+}
+
 chaquopy {
     defaultConfig {
         version = "3.10"
@@ -79,12 +113,30 @@ chaquopy {
             install("numpy==1.26.2")
             install("opencv-python==4.5.1.48")
             install("PyYAML")
+            // DSR Extract's remaining dependencies (pure Python, or built for Android)
+            install("Pillow")
+            install("Pint==0.24.4")
+            install("python-dateutil")
+        }
+        // these read data files next to their code (lexicon, OCR models, word list, unit table)
+        extractPackages("dsr_extract", "rapidocr_onnxruntime", "wordninja", "pint")
+    }
+    sourceSets {
+        getByName("main") {
+            srcDir(dsrPython)
         }
     }
+}
+
+tasks.named("preBuild") { dependsOn(copyDsrPython) }
+tasks.configureEach {
+    if (name.startsWith("merge") && name.endsWith("PythonSources")) dependsOn(copyDsrPython)
 }
 
 dependencies {
     // On-device text recognition (bundled model, works offline): reads dial numbers for
     // gauge-reader (in place of RapidOCR) and HMI screens when DSR Extract can't be reached.
     implementation("com.google.mlkit:text-recognition:16.0.1")
+    // Runs RapidOCR's ONNX models for DSR Extract on the tablet (OrtBridge.java)
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
 }

@@ -21,9 +21,11 @@ Future<void> showOcrReviewDialog(
   final units = {for (final p in remoteParams) p.key: p.unit};
   var readings = confidentReadings(result, generatorNumber: generatorNumber, unitOfParam: units);
   final labelFor = {for (final p in remoteParams) p.key: p.label};
-  final where = result.source == 'this tablet'
-      ? 'Read on this tablet (${result.fallbackReason ?? 'DSR Extract not reachable'}). '
-      : 'Read by DSR Extract. ';
+  final where = switch (result.source) {
+    'DSR Extract on this tablet' => 'Read by DSR Extract on this tablet (no server needed). ',
+    'this tablet' => 'Read on this tablet with the simpler reader (${result.fallbackReason ?? 'DSR Extract not reachable'}). ',
+    _ => 'Read by DSR Extract. ',
+  };
 
   // The screen in the photo is another generator's (e.g. Generator no.3's screen photographed for a
   // Generator 2 entry): its values are never put in this entry silently. Say so and let the
@@ -82,7 +84,10 @@ Future<void> showOcrReviewDialog(
     return;
   }
 
-  final selected = {for (final r in readings) r.paramKey: true};
+  // A value not marked as this generator's on the photo starts unticked (see confidentReadings).
+  final selected = {for (final r in readings) r.paramKey: !r.uncertain};
+  final placedLabels = {for (final r in readings) r.ocrLabel};
+  final unplaced = result.values.where((v) => !placedLabels.contains(v.label)).toList();
 
   if (!context.mounted) return;
   final applied = await showDialog<bool>(
@@ -111,8 +116,38 @@ Future<void> showOcrReviewDialog(
                     contentPadding: EdgeInsets.zero,
                     dense: true,
                     title: Text(labelFor[r.paramKey] ?? r.paramKey),
-                    subtitle: Text('${r.value} ${r.unit}  ·  read as "${r.ocrLabel}"${r.converted ? '  ·  unit converted' : ''}'),
+                    subtitle: Text(
+                      '${r.value} ${r.unit}  ·  read as "${r.ocrLabel}"${r.converted ? '  ·  unit converted' : ''}'
+                      '${r.uncertain ? '\nNot marked as Generator $generatorNumber on the photo — tick only if it is' : ''}',
+                      style: r.uncertain ? const TextStyle(color: AppColors.gold) : null,
+                    ),
                     onChanged: (v) => setState(() => selected[r.paramKey] = v ?? false),
+                  ),
+                // Everything else that was read: shows why a field stayed empty (another
+                // generator's block, a label the app doesn't know, a status word, ...).
+                if (unplaced.isNotEmpty)
+                  Theme(
+                    data: Theme.of(ctx).copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      title: Text(
+                        'Also read, not filled in (${unplaced.length})',
+                        style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+                      ),
+                      children: [
+                        for (final v in unplaced)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(
+                                '${v.label} = ${v.value} ${v.unit ?? ''}'.trim(),
+                                style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
               ],
             ),

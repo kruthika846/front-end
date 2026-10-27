@@ -20,3 +20,6 @@ ios/.symlinks/
 
 # Stray flutter run session logs
 flutter_*.log
+
+# Python bytecode (from running the on-tablet readers on a PC)
+__pycache__/

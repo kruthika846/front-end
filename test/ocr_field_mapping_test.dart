@@ -95,6 +95,23 @@ void main() {
     });
   });
 
+  test('an untagged value fills an empty field only as an unticked suggestion, and only if it is the only one', () {
+    final r = confidentReadings(
+      OcrScanResult(source: 'DSR Extract', values: [
+        v('Gen 3 - LO press.', '0.40', 'MPa'),
+        v('Cooling air temp.', '48.5', 'degC'),       // no "Gen 3 -": e.g. the alternator box at the edge
+        v('CFW in.press.', '0.37', 'MPa'),
+        v('CFW in.press.', '0.18', 'MPa'),            // two candidates: could be either generator's
+        v('LO press.', '0.33', 'MPa'),                // generator 3's own LO press. is already there
+      ]),
+      generatorNumber: 3,
+      unitOfParam: units,
+    );
+    expect(asMap(r), {'lo_press': '0.40', 'cooling_air_temp': '48.5'});
+    expect(r.firstWhere((m) => m.paramKey == 'lo_press').uncertain, isFalse);
+    expect(r.firstWhere((m) => m.paramKey == 'cooling_air_temp').uncertain, isTrue);
+  });
+
   test('bar is converted to the log\'s MPa; a temperature never fills a pressure', () {
     final r = confidentReadings(
       OcrScanResult(source: 'DSR Extract', values: [v('LO press.', '4.2', 'bar'), v('FO press.', '60.6', 'degC')]),
