@@ -108,7 +108,8 @@ class _GaugeCapturePanelState extends ConsumerState<GaugeCapturePanel> {
       t = t.replaceAll(re, to);
     }
     const generic = {'press', 'pressure', 'temp', 'temperature', 'gauge', 'pi', 'ti', 'no', 'the', 'of', 'and', 'inlet', 'in', 'outlet', 'out', 'sys', 'system'};
-    return t.split(RegExp(r'[^a-z0-9]+')).where((w) => w.length > 1 && !generic.contains(w)).toSet();
+    // single digits count: "Unit No.2" must pick Unit 2, not Unit 1
+    return t.split(RegExp(r'[^a-z0-9]+')).where((w) => (w.length > 1 || RegExp(r'\d').hasMatch(w)) && !generic.contains(w)).toSet();
   }
 
   void _save(_Capture c) {

@@ -454,13 +454,21 @@ def needle_view(gray, cx, cy, r):
 def _needle_contrast(gray, cx, cy, r):
     """Float image where the needle is bright: darkness above the dial
     face's typical level.  The level comes from the inner face only, so a
-    black bezel or recess around the gauge can't raise it."""
-    inv = 255 - cv2.GaussianBlur(gray, (5, 5), 0)
+    black bezel or recess around the gauge can't raise it.
+
+    Only thin darkness counts - darker than what lies a little to either
+    side - so a broad dark patch (rusty water or oil behind the glass, a
+    shadow) can't pass for the needle.  On a clean face this changes nothing."""
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    inv = 255 - blurred
     mask = np.zeros(gray.shape, np.uint8)
     cv2.circle(mask, (int(cx), int(cy)), max(int(0.6 * r), 2), 255, -1)
     face = inv[mask > 0]
     thr = np.percentile(face, 60) if face.size else 0
-    return np.clip(inv.astype(np.float32) - thr, 0, None)
+    k = max(int(0.2 * r) | 1, 3)  # wider than any needle
+    around = cv2.morphologyEx(blurred, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+    thin = around.astype(np.float32) - blurred
+    return np.clip(np.minimum(inv.astype(np.float32) - thr, thin), 0, None)
 
 
 def _major_ticks(inv, cx, cy, r, u_lo, u_hi, needle=None):
@@ -1000,7 +1008,11 @@ def read_auto(image, source="", debug_path=None, unit=None, gtype=None, value_ra
         if not any(h.unit == u.unit and math.hypot(h.x - u.x, h.y - u.y) < 0.1 * r for h in dial.units):
             dial.units.append(u)
     ngray, _ = needle_view(gray, cx, cy, r)  # judged around the final pivot
-    angle, conf = find_needle_angle(ngray, cx, cy, r)
+    # Numbers unusually close to the centre: r is the bezel, not the dial
+    # face, and a needle search sized by it would mostly look past the
+    # needle's tip.  Size it by the ring of numbers instead.
+    r_needle = scales[0].radius * r / 0.7 if scales and scales[0].radius < 0.55 else r
+    angle, conf = find_needle_angle(ngray, cx, cy, r_needle)
     if scales and scales[0].piecewise:  # uneven scale: fill gaps from the ticks
         _fill_from_ticks(scales[0], _needle_contrast(ngray, cx, cy, r), cx, cy, r, needle=angle)
         from_ticks = [lb.value for lb in scales[0].labels if lb.text.endswith("(tick)")]
