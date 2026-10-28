@@ -512,7 +512,7 @@ def _fill_from_ticks(scale, inv, cx, cy, r, needle=None):
     us, vs = scale._points()
     step = nice_step(set(vs))
     ticks = _major_ticks(inv, cx, cy, r, us[0] - 3, us[-1] + 3, needle)
-    if step is None or len(ticks) < 3:
+    if step is None or len(ticks) < 2:  # the two ticks either side of a gap are enough
         return
     # each read number sits next to its major tick
     anchors = []
@@ -934,7 +934,11 @@ def read_all(image, source="", debug_path=None, **kw):
     readings = [read_auto(image, source, None, at=d, temperature_hint=hint(d), extra_units=units_on(d),
                           ring_text=ring_of(d), **kw)
                 for d in dials]
-    good = [rd for rd in readings if rd.value is not None] or readings[:1]
+    good = [rd for rd in readings if rd.value is not None]
+    # A "gauge" whose scale numbers all belong to another, better-read gauge
+    # is that gauge's numbers fitted round a wrong centre: drop it.
+    good = [rd for rd in good if not any(other is not rd and other.labels_read > rd.labels_read
+                                         and _borrows_numbers(rd, other) for other in good)] or readings[:1]
     for i, rd in enumerate(good, 1):
         rd.gauge_index, rd.gauge_count = i, len(good)
     if debug_path:
@@ -946,6 +950,17 @@ def read_all(image, source="", debug_path=None, **kw):
     for rd in good:
         rd.processing_time_ms = total  # the whole photo; the gauges share the work
     return good
+
+
+def _borrows_numbers(rd, other):
+    """Is every scale number `rd` was read from one of `other`'s (same value,
+    same spot)?"""
+    mine, theirs = rd._debug[5], other._debug[5]
+    if not mine or not theirs:
+        return False
+    r = rd._debug[2]
+    return all(any(lb.value == ob.value and math.hypot(lb.x - ob.x, lb.y - ob.y) < 0.05 * r
+                   for ob in theirs[0].labels) for lb in mine[0].labels if not lb.text.endswith("(tick)"))
 
 
 def read_auto(image, source="", debug_path=None, unit=None, gtype=None, value_range=None, angles=None,
