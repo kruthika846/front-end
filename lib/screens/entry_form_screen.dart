@@ -60,14 +60,65 @@ class _EntryFormScreenState extends ConsumerState<EntryFormScreen> {
     }
   }
 
+  // A second tap on Submit while the first is still saving would save and queue the log twice.
+  bool _submitting = false;
+
   Future<void> _submit(List<ParamDefinition> remoteParams, List<ParamDefinition> localParams) async {
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    try {
+      await _submitOnce(remoteParams, localParams);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  /// Something typed, read or photographed that leaving the screen would throw away.
+  bool get _hasDraft {
+    final s = ref.read(entryFormProvider);
+    return s.values.values.any((v) => v.trim().isNotEmpty) ||
+        s.hmiPhotoPath != null ||
+        s.photoPath != null ||
+        s.pdfPath != null ||
+        s.notes.trim().isNotEmpty;
+  }
+
+  Future<void> _confirmLeave() async {
+    // while the app is locked the back button does nothing (the lock screen covers this form)
+    if (ref.read(lockedProvider)) return;
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Leave this entry?'),
+        content: const Text('The values on this entry have not been submitted. Leaving now throws them away.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Stay')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.alarm),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Discard and leave'),
+          ),
+        ],
+      ),
+    );
+    if (leave == true && mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _submitOnce(List<ParamDefinition> remoteParams, List<ParamDefinition> localParams) async {
     final formOk = _formKey.currentState?.validate() ?? false;
     final formState = ref.read(entryFormProvider);
 
     if (!formOk) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in every required field correctly')),
-      );
+      // name the fields: some (LOAD, the gauge circles) have no room to show an error themselves
+      final bad = [
+        for (final p in [...remoteParams, ...localParams])
+          if (p.validateValue(formState.values[p.key]) case final why?) '${p.label} (${why.toLowerCase()})',
+      ];
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(bad.isEmpty
+            ? 'Please fill in every required field correctly'
+            : 'Please fill in: ${bad.take(5).join(', ')}${bad.length > 5 ? ' and ${bad.length - 5} more' : ''}'),
+      ));
       return;
     }
 
@@ -188,52 +239,63 @@ class _EntryFormScreenState extends ConsumerState<EntryFormScreen> {
   @override
   Widget build(BuildContext context) {
     final configAsync = ref.watch(parameterConfigProvider);
+    // keeps this draft alive from the first frame (a log being corrected is loaded into it
+    // before the fields that watch it are drawn), and redraws when it changes
+    ref.watch(entryFormProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.correcting == null
-            ? 'New Entry — Generator ${widget.generatorNumber}'
-            : 'Correct — Generator ${widget.generatorNumber} · ${widget.correcting!.readingSlot == 'noon' ? 'Noon' : 'Time'}'),
-      ),
-      body: configAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, st) => Center(child: Text('Failed to load parameters: $e')),
-        data: (config) {
-          if (!_ready) return const Center(child: CircularProgressIndicator());
-          return Form(
-            key: _formKey,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-              children: [
-                if (widget.correcting != null) _SentBackNotice(entry: widget.correcting!) else const _ReadingSlotSelector(),
-                const SizedBox(height: 16),
-                _RemoteParametersPanel(remoteParams: config.remoteParams, entryId: _entryId, generatorNumber: widget.generatorNumber),
-                const SizedBox(height: 16),
-                _LocalParametersPanel(localParams: config.localParams, entryId: _entryId),
-                const SizedBox(height: 16),
-                _Section(
-                  icon: Icons.notes,
-                  title: 'Notes',
-                  children: [
-                    TextFormField(
-                      maxLines: 3,
-                      decoration: const InputDecoration(hintText: 'Optional — anything worth flagging'),
-                      onChanged: (v) => ref.read(entryFormProvider.notifier).setNotes(v),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _Section(
-                  icon: Icons.picture_as_pdf_outlined,
-                  title: 'Documents',
-                  children: [PhotoUploadField(entryId: _entryId, showLabel: false)],
-                ),
-                const SizedBox(height: 28),
-                _SubmitButton(onPressed: () => _submit(config.remoteParams, config.localParams)),
-              ],
-            ),
-          );
-        },
+    return PopScope(
+      canPop: !_hasDraft && !ref.watch(lockedProvider),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmLeave();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(widget.correcting == null
+              ? 'New Entry — Generator ${widget.generatorNumber}'
+              : 'Correct — Generator ${widget.generatorNumber} · ${widget.correcting!.readingSlot == 'noon' ? 'Noon' : 'Time'}'),
+        ),
+        body: configAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, st) => Center(child: Text('Failed to load parameters: $e')),
+          data: (config) {
+            if (!_ready) return const Center(child: CircularProgressIndicator());
+            return Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                children: [
+                  if (widget.correcting != null) _SentBackNotice(entry: widget.correcting!) else const _ReadingSlotSelector(),
+                  const SizedBox(height: 16),
+                  _RemoteParametersPanel(remoteParams: config.remoteParams, entryId: _entryId, generatorNumber: widget.generatorNumber),
+                  const SizedBox(height: 16),
+                  _LocalParametersPanel(localParams: config.localParams, entryId: _entryId),
+                  const SizedBox(height: 16),
+                  _Section(
+                    icon: Icons.notes,
+                    title: 'Notes',
+                    children: [
+                      TextFormField(
+                        maxLines: 3,
+                        // a log being corrected brings its notes back
+                        initialValue: ref.read(entryFormProvider).notes,
+                        decoration: const InputDecoration(hintText: 'Optional — anything worth flagging'),
+                        onChanged: (v) => ref.read(entryFormProvider.notifier).setNotes(v),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _Section(
+                    icon: Icons.picture_as_pdf_outlined,
+                    title: 'Documents',
+                    children: [PhotoUploadField(entryId: _entryId, showLabel: false)],
+                  ),
+                  const SizedBox(height: 28),
+                  _SubmitButton(busy: _submitting, onPressed: () => _submit(config.remoteParams, config.localParams)),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -340,8 +402,7 @@ class _RemoteParametersPanel extends StatelessWidget {
     final cylinders = List.generate(6, (i) => _find('exh_temp_cyl${i + 1}'));
 
     final chipGroups = <_ChipGroup>[
-      if (byGroup['Lubrication & Cooling'] != null)
-        _ChipGroup('Lubrication & Cooling', byGroup['Lubrication & Cooling']!, AppColors.teal),
+      if (byGroup['Lubrication & Cooling'] != null) _ChipGroup('Lubrication & Cooling', byGroup['Lubrication & Cooling']!, AppColors.teal),
       if (byGroup['Alternator'] != null) _ChipGroup('Alternator', byGroup['Alternator']!, AppColors.gold),
     ];
     final statusParams = byGroup['Status Indicators'] ?? const [];
@@ -454,8 +515,10 @@ class _HmiCaptureButtonState extends ConsumerState<_HmiCaptureButton> {
       await targetDir.create(recursive: true);
     }
     final ext = picked.path.split('.').last;
-    final targetPath = '${targetDir.path}/${widget.entryId}.$ext';
+    // a new name for each photo: a rescan never overwrites the first, nor shows its cached picture
+    final targetPath = '${targetDir.path}/${widget.entryId}_${DateTime.now().millisecondsSinceEpoch}.$ext';
     await File(picked.path).copy(targetPath);
+    if (!mounted) return;
 
     ref.read(entryFormProvider.notifier).setHmiPhotoPath(targetPath);
     if (context.mounted) {
@@ -468,8 +531,7 @@ class _HmiCaptureButtonState extends ConsumerState<_HmiCaptureButton> {
     try {
       final result = await OcrService.scan(imageFile: File(targetPath));
       if (!context.mounted) return;
-      await showOcrReviewDialog(context, ref,
-          result: result, remoteParams: widget.remoteParams, generatorNumber: widget.generatorNumber);
+      await showOcrReviewDialog(context, ref, result: result, remoteParams: widget.remoteParams, generatorNumber: widget.generatorNumber);
     } on OcrServiceException catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
@@ -804,14 +866,17 @@ class _Section extends StatelessWidget {
 /// look like it.
 class _SubmitButton extends StatelessWidget {
   final VoidCallback onPressed;
-  const _SubmitButton({required this.onPressed});
+
+  /// Saving: the button does nothing until it is done.
+  final bool busy;
+  const _SubmitButton({required this.onPressed, this.busy = false});
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onPressed,
+        onTap: busy ? null : onPressed,
         borderRadius: BorderRadius.circular(999),
         child: Ink(
           height: 58,
@@ -820,13 +885,15 @@ class _SubmitButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(999),
             boxShadow: [BoxShadow(color: AppColors.cyan.withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 8))],
           ),
-          child: const Center(
+          child: Center(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.check_circle, color: Colors.white, size: 22),
-                SizedBox(width: 10),
-                Text(
+                busy
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
+                    : const Icon(Icons.check_circle, color: Colors.white, size: 22),
+                const SizedBox(width: 10),
+                const Text(
                   'SUBMIT TO CHIEF ENGINEER',
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16, letterSpacing: 0.6),
                 ),

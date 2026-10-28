@@ -32,6 +32,7 @@ class HomeShell extends ConsumerStatefulWidget {
 
 class _HomeShellState extends ConsumerState<HomeShell> with WidgetsBindingObserver {
   int _index = 0;
+  int? _userId;
   Timer? _timer;
 
   // Sync every 45 seconds while the app is open, and when it comes back to the front
@@ -74,6 +75,11 @@ class _HomeShellState extends ConsumerState<HomeShell> with WidgetsBindingObserv
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
     if (session == null) return const SizedBox.shrink();
+    // another person signed in: start from their first tab, with nothing of the last person's
+    if (session.user.id != _userId) {
+      _userId = session.user.id;
+      _index = 0;
+    }
     final tabs = tabsFor(session.user);
     final index = _index.clamp(0, tabs.length - 1);
 
@@ -81,7 +87,18 @@ class _HomeShellState extends ConsumerState<HomeShell> with WidgetsBindingObserv
       body: Column(
         children: [
           if (session.offline) const _OfflineBanner() else if (session.user.canCapture) const _SyncBanner(),
-          Expanded(child: IndexedStack(index: index, children: [for (final t in tabs) t.page])),
+          // the banner above already sits under the status bar: the tabs' own title bars must not
+          // leave that space again
+          Expanded(
+            child: MediaQuery.removePadding(
+              context: context,
+              removeTop: true,
+              child: KeyedSubtree(
+                key: ValueKey(session.user.id),
+                child: IndexedStack(index: index, children: [for (final t in tabs) t.page]),
+              ),
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: NavigationBar(

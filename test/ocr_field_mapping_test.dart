@@ -122,6 +122,112 @@ void main() {
     expect(r.single.converted, isTrue);
   });
 
+  test('cylinder columns count when the photo missed the "CYL no." caption (No.k) or spells it otherwise', () {
+    final r = confidentReadings(
+      OcrScanResult(source: 'DSR Extract on this tablet', values: [
+        v('Gen 3 - Mean temp.', '406.6', 'degC'),
+        v('Gen 3 - Mean temp. (No.1)', '403.3', 'degC'), // caption missed: DSR Extract tags "No.k"
+        v('Gen 3 - Mean temp. (No.2)', '416.8', 'degC'),
+        v('Gen 3 - Mean temp. (No. 3)', '398.1', 'degC'),
+        v('Gen 3 - Mean temp. (Cyl.4)', '410.2', 'degC'),
+        v('Gen 3 - Mean temperature (CYL no. 5)', '405.0', 'degC'),
+        v('Gen 3 - Mean exh.gas temp. (CYL6)', '399.0', 'degC'),
+        v('Gen 3 - Dev. (No.1)', '-3.0', 'degC'), // the deviation row is not a cylinder temperature
+      ]),
+      generatorNumber: 3,
+      unitOfParam: units,
+    );
+    expect(asMap(r), {
+      'exh_temp_mean': '406.6',
+      'exh_temp_cyl1': '403.3',
+      'exh_temp_cyl2': '416.8',
+      'exh_temp_cyl3': '398.1',
+      'exh_temp_cyl4': '410.2',
+      'exh_temp_cyl5': '405.0',
+      'exh_temp_cyl6': '399.0',
+    });
+    expect(r.every((m) => !m.uncertain), isTrue);
+  });
+
+  test('a bare position or order is not a cylinder number', () {
+    final r = confidentReadings(
+      OcrScanResult(source: 'DSR Extract', values: [
+        v('Mean temp. (col 3)', '398.1', 'degC'),
+        v('Mean temp. (No.0)', '1', 'degC'),
+      ]),
+      generatorNumber: 1,
+      unitOfParam: units,
+    );
+    expect(r.where((m) => m.paramKey.startsWith('exh_temp_cyl')), isEmpty);
+  });
+
+  test('degree spellings OCR produces all count as °C', () {
+    final r = confidentReadings(
+      OcrScanResult(source: 'this tablet', values: [
+        v('LO temp.', '60.6', '℃'),
+        v('FO temp.', '134.4', 'ºC'),
+        v('CFW out.temp.', '78.8', '•C'),
+        v('Bearing temp.', '53.1', '˚C'),
+      ]),
+      generatorNumber: 1,
+      unitOfParam: units,
+    );
+    expect(asMap(r), {'lo_temp': '60.6', 'fo_temp': '134.4', 'cfw_out_temp': '78.8', 'bearing_temp': '53.1'});
+  });
+
+  test('a pressure with no unit, or a lone letter with no unit, is offered unticked', () {
+    final r = confidentReadings(
+      OcrScanResult(source: 'this tablet', values: [
+        v('LO press.', '4.2', null), // bar or MPa? the screen didn't say
+        v('V', '440', null), // a winding temperature or a voltage?
+        v('LO temp.', '60.6', null), // a temperature field: no doubt
+      ]),
+      generatorNumber: 1,
+      unitOfParam: units,
+    );
+    final byKey = {for (final m in r) m.paramKey: m};
+    expect(byKey['lo_press']!.uncertain, isTrue);
+    expect(byKey['winding_temp_v']!.uncertain, isTrue);
+    expect(byKey['lo_temp']!.uncertain, isFalse);
+  });
+
+  test('a field read twice in the same block is offered unticked, never silently the first', () {
+    final r = confidentReadings(
+      OcrScanResult(source: 'DSR Extract', values: [
+        v('Gen 3 - Mean temp.', '403.3', 'degC'), // the cylinder row without its column numbers...
+        v('Gen 3 - Mean temp. (#2)', '416.8', 'degC'),
+        v('Gen 3 - LO press.', '0.40', 'MPa'),
+      ]),
+      generatorNumber: 3,
+      unitOfParam: units,
+    );
+    final byKey = {for (final m in r) m.paramKey: m};
+    expect(byKey['exh_temp_mean']!.uncertain, isTrue);
+    expect(byKey['lo_press']!.uncertain, isFalse);
+  });
+
+  test('a thousands comma in kW is not a decimal point', () {
+    final r = confidentReadings(
+      OcrScanResult(source: 'DSR Extract', values: [v('Load', '1,250', 'kW'), v('LO press.', '0,40', 'MPa')]),
+      generatorNumber: 1,
+      unitOfParam: units,
+    );
+    expect(asMap(r), {'load_kw': '1250', 'lo_press': '0.40'});
+  });
+
+  test('a photo tagged only with another generator, none of whose values fit: its unnamed values start unticked', () {
+    final r = confidentReadings(
+      OcrScanResult(source: 'DSR Extract', values: [
+        v('Gen 2 - Ready to start', '1', null),
+        v('LO press.', '0.40', 'MPa'),
+      ]),
+      generatorNumber: 3,
+      unitOfParam: units,
+    );
+    expect(asMap(r), {'lo_press': '0.40'});
+    expect(r.single.uncertain, isTrue);
+  });
+
   test('labels that name no field, and non-numbers, are left out', () {
     final r = confidentReadings(
       OcrScanResult(source: 'this tablet', values: [v('Ready to start', '1', null), v('LO temp.', 'abc', 'degC')]),

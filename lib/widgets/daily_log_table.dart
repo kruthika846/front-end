@@ -149,9 +149,14 @@ class _DailyLogTableState extends ConsumerState<DailyLogTable> {
       data: (allEntries) {
         final entries = allEntries.where((e) => (e.generatorNumber ?? 1) == widget.generatorNumber).toList();
         if (entries.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.all(20),
-            child: Text('No readings logged yet — submit an entry to see it here.', style: TextStyle(color: AppColors.textMuted)),
+          return Padding(
+            padding: const EdgeInsets.all(20),
+            child: Text(
+              widget.readOnly
+                  ? 'No logs on the server for this generator in the last 7 days.'
+                  : 'No readings logged yet — submit an entry to see it here.',
+              style: const TextStyle(color: AppColors.textMuted),
+            ),
           );
         }
 
@@ -183,52 +188,80 @@ class _DailyLogTableState extends ConsumerState<DailyLogTable> {
                 ),
                 const SizedBox(height: 8),
                 ..._remarksSection(columns, dateFormat, timeFormat),
-                Scrollbar(
-                  controller: _scrollController,
-                  thumbVisibility: true,
-                  child: SingleChildScrollView(
-                    controller: _scrollController,
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: DataTable(
+                // The parameter names stay put on the left; only the day columns scroll. (Both
+                // tables have the same fixed heading and row heights, so the rows line up.)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    DataTable(
                       headingRowHeight: 50,
                       dataRowMinHeight: 40,
                       dataRowMaxHeight: 40,
-                      columnSpacing: 18,
+                      horizontalMargin: 4,
+                      columnSpacing: 0,
                       headingTextStyle: const TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700, fontSize: 11),
-                      dataTextStyle: const TextStyle(color: AppColors.textPrimary, fontSize: 12.5),
-                      columns: [
-                        const DataColumn(label: Text('Parameter')),
-                        for (final c in columns)
-                          DataColumn(
-                            label: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text('${dateFormat.format(c.date)}\n${_headerSecondLine(c, timeFormat)}'),
-                                if (c.entry != null && !widget.readOnly) ...[
-                                  const SizedBox(width: 2),
-                                  InkWell(
-                                    borderRadius: BorderRadius.circular(999),
-                                    onTap: () => confirmAndDeleteEntry(context, ref, c.entry!),
-                                    child: const Padding(
-                                      padding: EdgeInsets.all(4),
-                                      child: Icon(Icons.delete_outline, size: 15, color: AppColors.alarm),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                      ],
+                      columns: const [DataColumn(label: Text('Parameter'))],
                       rows: [
                         for (final row in _dailyLogRows)
                           DataRow(cells: [
-                            DataCell(Text('${row.label} ${row.unit}', style: const TextStyle(fontWeight: FontWeight.w600))),
-                            for (final c in columns) DataCell(Text(_valueFor(row, c.entry))),
+                            DataCell(SizedBox(
+                              width: MediaQuery.sizeOf(context).width < 600 ? 112 : 200,
+                              child: Text('${row.label} ${row.unit}',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, height: 1.15)),
+                            )),
                           ]),
                       ],
                     ),
-                  ),
+                    Expanded(
+                      child: Scrollbar(
+                        controller: _scrollController,
+                        thumbVisibility: true,
+                        child: SingleChildScrollView(
+                          controller: _scrollController,
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: DataTable(
+                            headingRowHeight: 50,
+                            dataRowMinHeight: 40,
+                            dataRowMaxHeight: 40,
+                            columnSpacing: 18,
+                            headingTextStyle: const TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700, fontSize: 11),
+                            dataTextStyle: const TextStyle(color: AppColors.textPrimary, fontSize: 12.5),
+                            columns: [
+                              for (final c in columns)
+                                DataColumn(
+                                  label: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text('${dateFormat.format(c.date)}\n${_headerSecondLine(c, timeFormat)}'),
+                                      if (c.entry != null && !widget.readOnly) ...[
+                                        const SizedBox(width: 2),
+                                        InkWell(
+                                          borderRadius: BorderRadius.circular(999),
+                                          onTap: () => confirmAndDeleteEntry(context, ref, c.entry!),
+                                          child: const Padding(
+                                            padding: EdgeInsets.all(4),
+                                            child: Icon(Icons.delete_outline, size: 15, color: AppColors.alarm),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                            ],
+                            rows: [
+                              for (final row in _dailyLogRows)
+                                DataRow(cells: [
+                                  for (final c in columns) DataCell(Text(_valueFor(row, c.entry))),
+                                ]),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

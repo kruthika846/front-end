@@ -6,6 +6,7 @@ can't start, ML Kit (com.logbridge.logbridge.MlKitText) reads the dial numbers i
 """
 
 import json
+import math
 
 import cv2
 import numpy as np
@@ -89,8 +90,23 @@ def read(path, wanted_unit="", debug_path=""):
     out["debug_image"] = debug_path or None
     if wanted_unit and best.type and best.unit:
         try:
-            out["value_in_wanted_unit"] = convert(best.value, best.type, best.unit, wanted_unit)
+            # the app's own spellings the converter doesn't know ("Amps" is A)
+            to = {"amps": "A", "amp": "A"}.get(wanted_unit.strip().lower(), wanted_unit)
+            out["value_in_wanted_unit"] = convert(best.value, best.type, best.unit, to)
             out["wanted_unit"] = wanted_unit
         except (ValueError, KeyError) as e:
-            out["unit_note"] = str(e)
-    return json.dumps(out)
+            out["unit_note"] = str(e)   # e.g. a temperature gauge photographed for a pressure
+    elif wanted_unit:
+        out["unit_note"] = "The dial's unit could not be read"
+    return json.dumps(_finite(out), default=str)
+
+
+def _finite(o):
+    """NaN / infinity (e.g. a needle angle it could not fix) are not JSON the app can read: null."""
+    if isinstance(o, float) and not math.isfinite(o):
+        return None
+    if isinstance(o, dict):
+        return {k: _finite(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_finite(v) for v in o]
+    return o

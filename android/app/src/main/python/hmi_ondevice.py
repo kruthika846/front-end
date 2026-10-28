@@ -16,8 +16,9 @@ import cv2
 from app_gauge import _ml_kit
 
 NUMBER = re.compile(r"^[-−]?\d+(?:[.,]\d+)?$")
-UNIT_AFTER = re.compile(r"^([-−]?\d+(?:[.,]\d+)?)\s*(°?\s?C|MPa|kPa|bar|kW|%|A|V|rpm)$", re.I)
-UNIT_ONLY = re.compile(r"^(°?\s?C|•C|MPa|kPa|bar|kW|%|A|V|rpm)$", re.I)
+# degrees as OCR renders them: °C, ºC, ˚C, •C, *C, or the ℃ sign
+UNIT_AFTER = re.compile(r"^([-−]?\d+(?:[.,]\d+)?)\s*([°º˚•*]?\s?C|℃|MPa|kPa|bar|kW|%|A|V|rpm)$", re.I)
+UNIT_ONLY = re.compile(r"^([°º˚•*]?\s?C|℃|MPa|kPa|bar|kW|%|A|V|rpm)$", re.I)
 TITLE = re.compile(r"generator\s*no\.?\s*(\d+)", re.I)
 
 

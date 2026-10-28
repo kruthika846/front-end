@@ -99,8 +99,12 @@ def read(path):
         why = "DSR Extract found no values"
     except Exception as e:  # noqa: BLE001
         why = f"DSR Extract failed: {type(e).__name__}: {e}"
-    from hmi_ondevice import read as mlkit_read
-    out = json.loads(mlkit_read(path))
+    try:
+        from hmi_ondevice import read as mlkit_read
+        out = json.loads(mlkit_read(path))
+    except Exception as e:  # noqa: BLE001
+        # both readers failed: keep DSR Extract's reason as well as ML Kit's
+        return json.dumps({"error": f"{why}; the simpler reader failed too: {type(e).__name__}: {e}"})
     out["dsr_note"] = why
     return json.dumps(out)
 

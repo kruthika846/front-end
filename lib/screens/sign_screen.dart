@@ -31,7 +31,7 @@ class _SignScreenState extends ConsumerState<SignScreen> {
 
   Future<void> _load() async {
     final session = ref.read(sessionProvider);
-    if (session == null) return;
+    if (session == null || _loading) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -42,27 +42,42 @@ class _SignScreenState extends ConsumerState<SignScreen> {
       if (mounted) setState(() => _logs = logs);
     } on SigningException catch (e) {
       if (mounted) setState(() => _error = e.message);
+    } catch (e) {
+      // an answer this app can't read: say so instead of an empty list
+      if (mounted) setState(() => _error = 'Could not load the logs waiting for you: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
+  // signing a day's logs: Sign all does nothing until it is done
+  bool _signing = false;
+
   Future<void> _signAll(List<WaitingLog> day) async {
+    if (_signing) return;
+    setState(() => _signing = true);
     final pin = await askSigningPin(context,
         title: 'Sign ${day.length} log(s)', message: 'Every log of ${_dayText(day.first.date)} listed here is signed with your PIN.');
-    if (pin == null) return;
+    if (pin == null) {
+      if (mounted) setState(() => _signing = false);
+      return;
+    }
     final signing = SigningService(ref.read(sessionProvider)!);
     var ok = 0;
     final refused = <String>[];
-    for (final l in day) {
-      try {
-        await signing.approve(l.id, pin);
-        ok++;
-      } on SigningException catch (e) {
-        refused.add('${l.screenName}: ${e.message}');
-        // a wrong or locked PIN is wrong for every log: stop instead of using up tries
-        if (e.message.contains('PIN')) break;
+    try {
+      for (final l in day) {
+        try {
+          await signing.approve(l.id, pin);
+          ok++;
+        } on SigningException catch (e) {
+          refused.add('${l.screenName}: ${e.message}');
+          // a wrong or locked PIN is wrong for every log: stop instead of using up tries
+          if (e.message.contains('PIN')) break;
+        }
       }
+    } finally {
+      if (mounted) setState(() => _signing = false);
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -81,6 +96,10 @@ class _SignScreenState extends ConsumerState<SignScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // logs submitted from other tablets show up after each sync, without a manual refresh
+    ref.listen(syncProvider.select((s) => s.lastOk), (before, now) {
+      if (now != null && now != before) _load();
+    });
     final byDay = <String, List<WaitingLog>>{};
     for (final l in _logs ?? const <WaitingLog>[]) {
       byDay.putIfAbsent(l.date, () => []).add(l);
@@ -120,7 +139,7 @@ class _SignScreenState extends ConsumerState<SignScreen> {
                         style: const TextStyle(color: AppColors.cyan, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
                   ),
                   FilledButton.icon(
-                    onPressed: () => _signAll(byDay[day]!),
+                    onPressed: _signing ? null : () => _signAll(byDay[day]!),
                     icon: const Icon(Icons.draw, size: 18),
                     label: Text('Sign all (${byDay[day]!.length})'),
                   ),

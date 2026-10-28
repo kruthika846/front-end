@@ -65,8 +65,13 @@ class OcrService {
 
   static Future<void> setBaseUrl(String url) async {
     final prefs = await SharedPreferences.getInstance();
-    final trimmed = url.trim().replaceAll(RegExp(r'/+$'), '');
-    await prefs.setString(_prefsKey, trimmed);
+    await prefs.setString(_prefsKey, cleanUrl(url));
+  }
+
+  /// "192.168.1.111:8765/" -> "http://192.168.1.111:8765" (typed without http://, or with a slash).
+  static String cleanUrl(String url) {
+    final t = url.trim().replaceAll(RegExp(r'/+$'), '');
+    return t.isEmpty || t.contains('://') ? t : 'http://$t';
   }
 
   static Dio _client(String baseUrl, {Duration receiveTimeout = const Duration(seconds: 30)}) => Dio(BaseOptions(
@@ -75,12 +80,13 @@ class OcrService {
         receiveTimeout: receiveTimeout,
       ));
 
-  /// GET /health — DSR Extract answers {"status": "ok"}.
-  static Future<bool> checkHealth() async {
-    final baseUrl = await getBaseUrl();
+  /// GET /health — DSR Extract answers {"status": "ok"}. [url]: try this address instead of the saved one.
+  static Future<bool> checkHealth({String? url}) async {
+    final baseUrl = url != null ? cleanUrl(url) : await getBaseUrl();
     try {
       final res = await _client(baseUrl).get('/health');
-      return res.statusCode == 200 && res.data?['status'] == 'ok';
+      final d = res.data;
+      return res.statusCode == 200 && d is Map && d['status'] == 'ok';
     } catch (_) {
       return false;
     }
@@ -99,24 +105,28 @@ class OcrService {
     try {
       res = await dio.post('/extract/pdf', data: formData, options: Options(sendTimeout: const Duration(seconds: 60)));
     } on DioException catch (e) {
-      final unreachable = e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.connectionError ||
-          e.type == DioExceptionType.unknown;
+      final unreachable =
+          e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.connectionError || e.type == DioExceptionType.unknown;
       if (unreachable) return _onTablet(imageFile, 'DSR Extract could not be reached at $baseUrl');
       if (e.type == DioExceptionType.receiveTimeout || e.type == DioExceptionType.sendTimeout) {
         return _onTablet(imageFile, 'DSR Extract took too long to answer');
       }
-      throw OcrServiceException('DSR Extract could not read this photo: ${e.response?.data?['detail'] ?? e.message}');
+      // the server answered with an error (it failed on this photo, or another service is on that
+      // port): the reader on this tablet can still try. The body may be JSON or a plain page.
+      final d = e.response?.data;
+      final detail = d is Map ? (d['detail'] ?? d['error']) : null;
+      return _onTablet(imageFile, 'DSR Extract answered ${e.response?.statusCode ?? 'an error'}${detail != null ? ' ($detail)' : ''}');
     }
 
+    if (res.data is! Map) {
+      return _onTablet(imageFile, 'The service at $baseUrl did not answer like DSR Extract');
+    }
     try {
       final data = res.data as Map<String, dynamic>;
       if (data['document_type'] == 'error') {
         throw OcrServiceException('DSR Extract could not read this photo: ${data['error'] ?? 'unknown error'}');
       }
-      final values = ((data['extracted_values'] as List?) ?? const [])
-          .map((e) => OcrValue.fromJson(e as Map<String, dynamic>))
-          .toList();
+      final values = ((data['extracted_values'] as List?) ?? const []).map((e) => OcrValue.fromJson(e as Map<String, dynamic>)).toList();
       return OcrScanResult(source: 'DSR Extract', values: values);
     } on OcrServiceException {
       rethrow;
@@ -128,12 +138,10 @@ class OcrService {
   static Future<OcrScanResult> _onTablet(File imageFile, String reason) async {
     final data = await DeviceOcr.readHmi(imageFile.path);
     if (data['error'] != null) throw OcrServiceException('$reason, and reading on this tablet failed: ${data['error']}');
-    final values = ((data['extracted_values'] as List?) ?? const [])
-        .map((e) => OcrValue.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final values = ((data['extracted_values'] as List?) ?? const []).map((e) => OcrValue.fromJson(e as Map<String, dynamic>)).toList();
     // DSR Extract runs on the tablet too (dsr_device.py); the simpler ML Kit reader only if that failed
     final onTablet = data['source'] == 'dsr-on-device' ? 'DSR Extract on this tablet' : 'this tablet';
-    final note = data['dsr_note'];   // why DSR Extract on the tablet was not used
+    final note = data['dsr_note']; // why DSR Extract on the tablet was not used
     return OcrScanResult(source: onTablet, values: values, fallbackReason: note == null ? reason : '$reason; $note');
   }
 }

@@ -50,8 +50,12 @@ class LogBookScreen extends ConsumerWidget {
                   padding: const EdgeInsets.only(bottom: 14),
                   child: Text(
                     b.fromServer
-                        ? (viewer ? 'Last 7 days from the LogBridge server - signed logs only.' : 'Last 7 days from the LogBridge server. ✓ = signed.')
-                        : 'The server can\'t be reached: showing the entries on this tablet.',
+                        ? (viewer
+                            ? 'Last 7 days from the LogBridge server - signed logs only.'
+                            : 'Last 7 days from the LogBridge server. ✓ = signed.')
+                        : viewer
+                            ? 'The LogBridge server can\'t be reached, so there are no signed logs to show. Pull down to try again.'
+                            : 'The server can\'t be reached: showing the entries on this tablet.',
                     style: TextStyle(color: b.fromServer ? AppColors.textMuted : AppColors.gold, fontSize: 12.5),
                   ),
                 ),

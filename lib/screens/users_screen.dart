@@ -38,11 +38,14 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
       });
     } on UsersException catch (e) {
       if (mounted) setState(() => _error = e.message);
+    } catch (e) {
+      // an answer this app can't read: say so instead of spinning forever
+      if (mounted) setState(() => _error = 'Could not load the users: $e');
     }
   }
 
-  void _snack(String text, {bool bad = false}) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(text), backgroundColor: bad ? AppColors.alarm : null));
+  void _snack(String text, {bool bad = false}) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text), backgroundColor: bad ? AppColors.alarm : null));
 
   Future<void> _run(Future<void> Function() action, String done) async {
     try {
@@ -71,7 +74,8 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(controller: username, autocorrect: false, decoration: const InputDecoration(labelText: 'Username (e.g. j.smith)')),
+                  TextField(
+                      controller: username, autocorrect: false, decoration: const InputDecoration(labelText: 'Username (e.g. j.smith)')),
                   const SizedBox(height: 10),
                   TextField(controller: name, decoration: const InputDecoration(labelText: 'Full name')),
                   const SizedBox(height: 10),
@@ -82,7 +86,10 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
                     onChanged: (v) => setState(() => role = v ?? role),
                   ),
                   const SizedBox(height: 10),
-                  TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'First password (at least 8 characters)')),
+                  TextField(
+                      controller: password,
+                      obscureText: true,
+                      decoration: const InputDecoration(labelText: 'First password (at least 8 characters)')),
                   if (Roles.approvers.contains(role)) ...[
                     const SizedBox(height: 10),
                     TextField(
@@ -153,6 +160,22 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
       case 'unlock':
         await _run(() => _api.update(u.id, {'unlock': true}), '${u.displayName} unlocked.');
       case 'deactivate':
+        final sure = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text('Deactivate ${u.displayName}?'),
+            content: const Text('They can no longer sign in, on any tablet. You can activate them again later.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: AppColors.alarm),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Deactivate'),
+              ),
+            ],
+          ),
+        );
+        if (sure != true) return;
         await _run(() => _api.update(u.id, {'active': false}), '${u.displayName} deactivated. Their sign-in stops at once.');
       case 'activate':
         await _run(() => _api.update(u.id, {'active': true}), '${u.displayName} active again.');
@@ -168,14 +191,16 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
     final me = ref.watch(sessionProvider)?.user;
     return Scaffold(
       appBar: AppBar(title: const Text('Users')),
-      floatingActionButton: FloatingActionButton.extended(onPressed: _add, icon: const Icon(Icons.person_add), label: const Text('Add user')),
+      floatingActionButton:
+          FloatingActionButton.extended(onPressed: _add, icon: const Icon(Icons.person_add), label: const Text('Add user')),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
           children: [
             if (_error != null) Text(_error!, style: const TextStyle(color: AppColors.gold)),
-            if (_users == null && _error == null) const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator())),
+            if (_users == null && _error == null)
+              const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator())),
             for (final u in _users ?? const <AdminUser>[])
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
@@ -186,8 +211,7 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
                       backgroundColor: (u.active ? AppColors.cyan : AppColors.textFaint).withValues(alpha: 0.15),
                       child: Icon(Icons.person, color: u.active ? AppColors.cyan : AppColors.textFaint),
                     ),
-                    title: Text(u.displayName,
-                        style: TextStyle(fontWeight: FontWeight.w700, color: u.active ? null : AppColors.textFaint)),
+                    title: Text(u.displayName, style: TextStyle(fontWeight: FontWeight.w700, color: u.active ? null : AppColors.textFaint)),
                     subtitle: Text([
                       '@${u.username}',
                       Roles.label(u.role),
@@ -202,8 +226,10 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
                         const PopupMenuItem(value: 'password', child: Text('Reset password')),
                         if (Roles.approvers.contains(u.role)) const PopupMenuItem(value: 'pin', child: Text('Reset signing PIN')),
                         if (u.locked || u.pinLocked) const PopupMenuItem(value: 'unlock', child: Text('Unlock')),
-                        for (final r in _roles)
-                          if (r != u.role) PopupMenuItem(value: 'role:$r', child: Text('Make ${Roles.label(r)}')),
+                        // never your own role: making yourself a Duty Engineer would take the Users tab away
+                        if (u.id != me?.id)
+                          for (final r in _roles)
+                            if (r != u.role) PopupMenuItem(value: 'role:$r', child: Text('Make ${Roles.label(r)}')),
                         if (u.id != me?.id)
                           u.active
                               ? const PopupMenuItem(value: 'deactivate', child: Text('Deactivate'))

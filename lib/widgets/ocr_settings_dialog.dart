@@ -23,8 +23,9 @@ Future<void> showOcrSettingsDialog(BuildContext context) async {
             checking = true;
             statusMessage = null;
           });
-          await OcrService.setBaseUrl(controller.text);
-          final ok = await OcrService.checkHealth();
+          // only Save keeps the address: Test followed by Cancel leaves the old one in place
+          final ok = await OcrService.checkHealth(url: controller.text);
+          if (!ctx.mounted) return; // the dialog was closed while testing
           setState(() {
             checking = false;
             statusMessage = ok
@@ -67,9 +68,8 @@ Future<void> showOcrSettingsDialog(BuildContext context) async {
           actions: [
             TextButton(
               onPressed: checking ? null : testConnection,
-              child: checking
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Test'),
+              child:
+                  checking ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Test'),
             ),
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
             FilledButton(

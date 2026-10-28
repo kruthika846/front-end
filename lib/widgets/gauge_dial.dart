@@ -35,18 +35,29 @@ class GaugeDial extends ConsumerWidget {
     return targetPath;
   }
 
+  // gauges being photographed or read: a second tap waits for the first to finish
+  static final _busy = <String>{};
+
   Future<void> _capturePhoto(BuildContext context, WidgetRef ref) async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
-    if (picked == null) return;
-    final ext = picked.path.split('.').last;
-    final savedPath = await _copyToAppStorage(picked.path, 'gauge_photos', '${entryId}_${definition.key}.$ext');
-    ref.read(entryFormProvider.notifier).setParamPhoto(definition.key, savedPath);
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Gauge photo saved for ${definition.label} — reading the dial on this tablet...')),
-    );
-    await _readGauge(context, ref, savedPath);
+    final busyKey = '$entryId/${definition.key}';
+    if (!_busy.add(busyKey)) return;
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+      if (picked == null) return;
+      final ext = picked.path.split('.').last;
+      // a new name for each photo: a retake never overwrites the first, nor shows its cached picture
+      final savedPath = await _copyToAppStorage(
+          picked.path, 'gauge_photos', '${entryId}_${definition.key}_${DateTime.now().millisecondsSinceEpoch}.$ext');
+      if (!context.mounted) return;
+      ref.read(entryFormProvider.notifier).setParamPhoto(definition.key, savedPath);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gauge photo saved for ${definition.label} — reading the dial on this tablet...')),
+      );
+      await _readGauge(context, ref, savedPath);
+    } finally {
+      _busy.remove(busyKey);
+    }
   }
 
   /// Reads the photographed needle gauge with gauge-reader, on this tablet,
@@ -59,6 +70,22 @@ class GaugeDial extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Could not read this gauge (${r.error ?? 'no value found'}). Type the value as usual.')),
       );
+      return;
+    }
+    // The gauge measures something else than this field (a thermometer photographed for a
+    // pressure): never offer its number in the field's unit.
+    String plain(String u) {
+      final k = u.toLowerCase().replaceAll(RegExp(r'[\s°º˚.]'), '');
+      return k == 'amps' || k == 'amp' ? 'a' : k;
+    }
+
+    final unitUnread = r.valueInWantedUnit == null && r.unitNote != null && r.unit.isEmpty;
+    final sameUnit = r.unit.isNotEmpty && plain(r.unit) == plain(definition.unit);
+    if (r.valueInWantedUnit == null && r.unitNote != null && !unitUnread && !sameUnit) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('This gauge reads ${r.value} ${r.unit}, but ${definition.label} is in ${definition.unit}. '
+            'Photograph the right gauge, or type the value.'),
+      ));
       return;
     }
     // Pressures in MPa need more places than temperatures in °C.
@@ -81,8 +108,12 @@ class GaugeDial extends ConsumerWidget {
               '${r.gaugesFound > 1 ? '\n${r.gaugesFound} gauges in the photo; the clearest one was read.' : ''}',
               style: const TextStyle(color: AppColors.textMuted, fontSize: 12.5),
             ),
-            for (final n in r.notes.take(3))
-              Text('• $n', style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+            for (final n in r.notes.take(3)) Text('• $n', style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+            if (unitUnread) ...[
+              const SizedBox(height: 8),
+              Text('The dial\'s unit could not be read: make sure the dial is in ${definition.unit}.',
+                  style: const TextStyle(color: AppColors.gold, fontSize: 12.5, fontWeight: FontWeight.w600)),
+            ],
             const SizedBox(height: 8),
             const Text('Check it against the dial before applying.', style: TextStyle(fontSize: 12.5)),
           ],
@@ -94,7 +125,7 @@ class GaugeDial extends ConsumerWidget {
       ),
     );
     // unchecked until a person ticks it against the dial
-    if (apply == true) ref.read(entryFormProvider.notifier).setReaderValue(definition.key, value);
+    if (apply == true && context.mounted) ref.read(entryFormProvider.notifier).setReaderValue(definition.key, value);
   }
 
   @override
