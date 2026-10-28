@@ -18,8 +18,9 @@ String sizeText(int bytes) {
   return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
 }
 
-/// The Sync tab (design, section 3): when this tablet last synced, what is waiting to go,
-/// device storage, anything the server refused, and Sync now.
+/// The Sync tab (design, section 3, and the offline-to-cloud sync workflow): readings and
+/// values sync by themselves (Sync now sends them at once); photos wait on this tablet until
+/// a person taps Upload photos. Also device storage and anything the server refused.
 class SyncScreen extends ConsumerStatefulWidget {
   const SyncScreen({super.key});
 
@@ -55,12 +56,18 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const Text('READINGS AND VALUES',
+                        style: TextStyle(color: AppColors.cyan, fontWeight: FontWeight.w800, letterSpacing: 0.8, fontSize: 12.5)),
+                    const SizedBox(height: 6),
                     Text('Last synced ${agoText(s.lastOk)}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
                     if (s.lastOk != null)
                       Text(fmt.format(s.lastOk!), style: const TextStyle(color: AppColors.textMuted)),
                     const SizedBox(height: 10),
+                    _row('Waiting to go (values, submissions)', '${s.pendingOps}'),
+                    const SizedBox(height: 6),
                     const Text(
-                      'This tablet syncs by itself every 45 seconds while the app is open, and when it comes back to the front.',
+                      'Values, parameters and submissions are small: they sync by themselves whenever the server can be '
+                      'reached - every 45 seconds while the app is open, and when it comes back to the front.',
                       style: TextStyle(color: AppColors.textMuted),
                     ),
                     if (s.lastError != null) ...[
@@ -90,14 +97,43 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Waiting to go', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 8),
-                    _row('Changes (values, submissions)', '${s.pendingOps}'),
-                    _row('Photos and PDFs', s.pendingPhotos == 0 ? '0' : '${s.pendingPhotos} (${sizeText(s.pendingBytes)})'),
+                    const Text('PHOTOS',
+                        style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.w800, letterSpacing: 0.8, fontSize: 12.5)),
                     const SizedBox(height: 6),
+                    Text(
+                      s.pendingPhotos == 0 ? 'All photos uploaded' : '${s.pendingPhotos} waiting · ${sizeText(s.pendingBytes)}',
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                    ),
+                    Text('Last uploaded ${agoText(s.lastPhotosOk)}', style: const TextStyle(color: AppColors.textMuted)),
+                    const SizedBox(height: 10),
                     const Text(
-                      'Values go first, photos after. A photo counts on the server only when its checksum matches.',
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 12.5),
+                      'Photos and PDFs are large, so they wait on this tablet until you upload them - best on a good '
+                      'connection, such as in port. Readings still waiting go first. A photo counts on the server only '
+                      'when its checksum matches, and it stays on this tablet afterwards.',
+                      style: TextStyle(color: AppColors.textMuted),
+                    ),
+                    if (s.photosRunning && s.photosTotal > 0) ...[
+                      const SizedBox(height: 12),
+                      LinearProgressIndicator(value: s.photosDone / s.photosTotal),
+                      const SizedBox(height: 4),
+                      Text('Uploading ${s.photosDone} of ${s.photosTotal}…', style: const TextStyle(color: AppColors.textMuted)),
+                    ],
+                    if (s.photosError != null) ...[
+                      const SizedBox(height: 10),
+                      Text(s.photosError!, style: const TextStyle(color: AppColors.alarm)),
+                    ],
+                    const SizedBox(height: 14),
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(backgroundColor: AppColors.gold, foregroundColor: AppColors.ink900),
+                      onPressed: s.photosRunning || s.pendingPhotos == 0 ? null : sync.uploadPhotos,
+                      icon: s.photosRunning
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.cloud_upload_outlined),
+                      label: Text(s.photosRunning
+                          ? 'Uploading photos…'
+                          : s.pendingPhotos == 0
+                              ? 'Upload photos'
+                              : 'Upload photos (${s.pendingPhotos} · ${sizeText(s.pendingBytes)})'),
                     ),
                   ],
                 ),

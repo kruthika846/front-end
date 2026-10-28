@@ -116,13 +116,23 @@ void main() {
     await sync.queueSubmit(entry, cfg);
     expect(container.read(syncProvider).pendingOps, greaterThan(3));
 
+    // the automatic sync sends the small data only: the photo waits for Upload photos
     await sync.syncNow(manual: true);
-    final st = container.read(syncProvider);
+    var st = container.read(syncProvider);
     expect(st.lastError, isNull);
     expect(st.pendingOps, 0);
-    expect(st.pendingPhotos, 0, reason: 'the photo was received with a matching checksum');
+    expect(st.pendingPhotos, 1, reason: 'photos are large data: they wait for a person to upload them');
     expect(st.refused, isEmpty);
     expect(await repo.statusOf(logId), 'submitted');
+    final before = (await api.get('/api/logs/$logId')).data as Map;
+    expect((before['photos'] as List).single['received'], 0, reason: 'the server knows the photo, not its bytes yet');
+
+    await sync.uploadPhotos();
+    st = container.read(syncProvider);
+    expect(st.photosError, isNull);
+    expect(st.pendingPhotos, 0, reason: 'the photo was received with a matching checksum');
+    expect(st.lastPhotosOk, isNotNull);
+    expect(await File(photo.path).exists(), isTrue, reason: 'the tablet keeps its copy');
 
     // what the server holds
     final d = (await api.get('/api/logs/$logId')).data as Map;

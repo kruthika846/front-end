@@ -36,6 +36,13 @@ class SyncState {
   final int pendingBytes;
   final List<RefusedChange> refused;
 
+  /// Photos go up only when a person chooses (Upload photos): they are large.
+  final bool photosRunning;
+  final int photosDone;
+  final int photosTotal;
+  final DateTime? lastPhotosOk;
+  final String? photosError;
+
   const SyncState({
     this.running = false,
     this.lastOk,
@@ -46,6 +53,11 @@ class SyncState {
     this.pendingPhotos = 0,
     this.pendingBytes = 0,
     this.refused = const [],
+    this.photosRunning = false,
+    this.photosDone = 0,
+    this.photosTotal = 0,
+    this.lastPhotosOk,
+    this.photosError,
   });
 
   SyncState copyWith({
@@ -59,6 +71,12 @@ class SyncState {
     int? pendingPhotos,
     int? pendingBytes,
     List<RefusedChange>? refused,
+    bool? photosRunning,
+    int? photosDone,
+    int? photosTotal,
+    DateTime? lastPhotosOk,
+    String? photosError,
+    bool clearPhotosError = false,
   }) =>
       SyncState(
         running: running ?? this.running,
@@ -70,17 +88,25 @@ class SyncState {
         pendingPhotos: pendingPhotos ?? this.pendingPhotos,
         pendingBytes: pendingBytes ?? this.pendingBytes,
         refused: refused ?? this.refused,
+        photosRunning: photosRunning ?? this.photosRunning,
+        photosDone: photosDone ?? this.photosDone,
+        photosTotal: photosTotal ?? this.photosTotal,
+        lastPhotosOk: lastPhotosOk ?? this.lastPhotosOk,
+        photosError: clearPhotosError ? null : (photosError ?? this.photosError),
       );
 
   /// Days since the last good sync: a banner after 2, an alarm after 7 (design, section 6).
   int? get daysSinceSync => lastOk == null ? null : DateTime.now().difference(lastOk!).inHours ~/ 24;
 }
 
-/// Sync with the LogBridge server (design, section 6). Values travel first (small), photos
-/// follow (large); every operation carries its own id, the server remembers its answer to
-/// each, and a photo counts only when its SHA-256 matches - so every step can be repeated
-/// safely. Runs every 45 seconds while the app is open, when it comes back to the front, and
-/// on "Sync now"; with the app closed nothing syncs.
+/// Sync with the LogBridge server (design, section 6, and the offline-to-cloud sync
+/// workflow). Small data - values, readings, submissions and each photo's details - goes by
+/// itself: every 45 seconds while the app is open, when it comes back to the front, and on
+/// "Sync now". Large data - the photos - waits in its own queue until a person chooses
+/// "Upload photos" (e.g. in port, on a good connection); it sends any remaining readings
+/// first, then each photo, which counts only when the server confirms the same SHA-256.
+/// Every operation carries its own id and the server remembers its answer to each, so every
+/// step can be repeated safely. With the app closed nothing syncs.
 class SyncService extends StateNotifier<SyncState> {
   final Ref ref;
   final LogbookRepository repo;
@@ -94,7 +120,11 @@ class SyncService extends StateNotifier<SyncState> {
   }
 
   static const _prefsLastOk = 'sync_last_ok';
+  static const _prefsLastPhotosOk = 'sync_last_photos_ok';
   static const batch = 100;
+
+  // the automatic sync and Upload photos both send the outbox: one at a time
+  Future<void> _valuesLock = Future.value();
 
   static Dio _client(String baseUrl, String token) => Dio(BaseOptions(
         baseUrl: baseUrl,
@@ -106,8 +136,11 @@ class SyncService extends StateNotifier<SyncState> {
 
   Future<void> _load() async {
     try {
-      final ms = (await SharedPreferences.getInstance()).getInt(_prefsLastOk);
+      final prefs = await SharedPreferences.getInstance();
+      final ms = prefs.getInt(_prefsLastOk);
       if (ms != null) state = state.copyWith(lastOk: DateTime.fromMillisecondsSinceEpoch(ms));
+      final pms = prefs.getInt(_prefsLastPhotosOk);
+      if (pms != null) state = state.copyWith(lastPhotosOk: DateTime.fromMillisecondsSinceEpoch(pms));
       await refreshCounts();
     } catch (_) {/* no storage (tests): counts stay zero */}
   }
@@ -244,8 +277,7 @@ class SyncService extends StateNotifier<SyncState> {
     state = state.copyWith(running: true, clearError: true);
     final dio = clientFor(session.serverUrl, session.token);
     try {
-      await _pushValues(dio);
-      await _pushPhotos(dio);
+      await _pushValuesLocked(dio); // small data only: photos wait for Upload photos
       await _pull(dio);
       // the vessel configuration may have changed (e.g. a generator added on the server)
       final cfg = (await dio.get('/api/config')).data;
@@ -274,6 +306,48 @@ class SyncService extends StateNotifier<SyncState> {
         await refreshCounts();
       } catch (_) {/* storage unreadable: the counts stay as they were */}
     }
+  }
+
+  /// Upload photos: the large data, only when a person chooses. Readings still waiting go
+  /// first, so the server has every photo's details; then each photo, confirmed by the
+  /// server's SHA-256. The photos stay on this tablet afterwards.
+  Future<void> uploadPhotos() async {
+    final session = ref.read(sessionProvider);
+    if (state.photosRunning || session == null || !session.user.canCapture) return;
+    state = state.copyWith(photosRunning: true, photosDone: 0, photosTotal: 0, clearPhotosError: true);
+    final dio = clientFor(session.serverUrl, session.token);
+    try {
+      await _pushValuesLocked(dio);
+      final failed = await _pushPhotos(dio, onProgress: (done, total) => state = state.copyWith(photosDone: done, photosTotal: total));
+      final now = DateTime.now();
+      await (await SharedPreferences.getInstance()).setInt(_prefsLastPhotosOk, now.millisecondsSinceEpoch);
+      state = state.copyWith(
+        lastPhotosOk: now,
+        offline: false,
+        photosError: failed == 0 ? null : '$failed photo${failed == 1 ? '' : 's'} not accepted - see the list below',
+      );
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        state = state.copyWith(needsSignIn: true, photosError: 'The server no longer accepts this sign-in. Sign out and sign in again with a connection.');
+      } else if (_unreachable(e)) {
+        state = state.copyWith(photosError: 'The connection dropped. The photos not yet sent wait on this tablet - try again later.');
+      } else {
+        state = state.copyWith(photosError: 'The server answered ${e.response?.statusCode}');
+      }
+    } catch (e) {
+      state = state.copyWith(photosError: '$e');
+    } finally {
+      state = state.copyWith(photosRunning: false);
+      try {
+        await refreshCounts();
+      } catch (_) {/* storage unreadable: the counts stay as they were */}
+    }
+  }
+
+  Future<void> _pushValuesLocked(Dio dio) {
+    final run = _valuesLock.then((_) => _pushValues(dio));
+    _valuesLock = run.catchError((_) {});
+    return run;
   }
 
   Future<void> _pushValues(Dio dio) async {
@@ -314,13 +388,20 @@ class SyncService extends StateNotifier<SyncState> {
     }
   }
 
-  Future<void> _pushPhotos(Dio dio) async {
+  /// Returns how many photos the server refused.
+  Future<int> _pushPhotos(Dio dio, {void Function(int done, int total)? onProgress}) async {
     final db = await AppDatabase.instance.database;
     final rows = await db.query('sync_photos', where: 'meta_synced = 1 AND uploaded = 0 AND rejected IS NULL');
+    var done = 0;
+    var failed = 0;
+    onProgress?.call(0, rows.length);
     for (final p in rows) {
       final f = File(p['path'] as String);
       if (!await f.exists()) {
         await db.update('sync_photos', {'rejected': 'The file is no longer on this tablet'}, where: 'id = ?', whereArgs: [p['id']]);
+        await _refusePhoto(db, p, 'The file is no longer on this tablet');
+        failed++;
+        onProgress?.call(++done, rows.length);
         continue;
       }
       try {
@@ -336,9 +417,16 @@ class SyncService extends StateNotifier<SyncState> {
         if (_unreachable(e) || e.response?.statusCode == 401) rethrow;
         final msg = (e.response?.data is Map ? e.response!.data['error'] : null) ?? 'The server refused this photo';
         await db.update('sync_photos', {'rejected': '$msg'}, where: 'id = ?', whereArgs: [p['id']]);
+        await _refusePhoto(db, p, '$msg');
+        failed++;
       }
+      onProgress?.call(++done, rows.length);
     }
+    return failed;
   }
+
+  Future<void> _refusePhoto(Database db, Map p, String msg) =>
+      db.insert('sync_refused', {'at': DateTime.now().toIso8601String(), 'type': 'photo', 'log_id': p['log_id'], 'message': msg});
 
   /// The server's status wins once this tablet's own changes for a log have gone up:
   /// submitted, signed, or sent back with a reason.

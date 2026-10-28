@@ -226,7 +226,11 @@ class _LogReviewScreenState extends ConsumerState<LogReviewScreen> {
 
   Widget _photo(Map p) {
     if (p['received'] != 1 && p['received'] != true) {
-      return _tile(const Text('Photo not received yet', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textMuted, fontSize: 12)));
+      // photos go up only when the crew taps Upload photos on the tablet (large data, sent later)
+      return _tile(const Padding(
+        padding: EdgeInsets.all(8),
+        child: Text('Photo not uploaded yet\n(still on the tablet)', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+      ));
     }
     if (p['mime'] == 'application/pdf') {
       return _tile(const Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.picture_as_pdf, size: 36), Text('PDF')]));
