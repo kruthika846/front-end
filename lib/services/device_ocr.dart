@@ -47,6 +47,10 @@ class GaugeReading {
   final List<String> notes;
   final int gaugesFound;
 
+  /// The reading converted to the unit the parameter asked for, when the dial shows another one.
+  final double? valueInWantedUnit;
+  final String wantedUnit;
+
   /// The marked-up copy of the photo, when it was written.
   final String? debugImage;
 
@@ -63,9 +67,13 @@ class GaugeReading {
     this.status = '',
     this.notes = const [],
     this.gaugesFound = 0,
+    this.valueInWantedUnit,
+    this.wantedUnit = '',
     this.debugImage,
     this.display = const {},
   });
+
+  bool get converted => valueInWantedUnit != null && wantedUnit.isNotEmpty && wantedUnit != unit;
 
   factory GaugeReading.fromJson(Map<String, dynamic> j) {
     final display = ((j['display'] as Map?) ?? const {}).map((k, v) => MapEntry('$k', '$v'));
@@ -80,6 +88,8 @@ class GaugeReading {
       status: j['status'] as String? ?? '',
       notes: ((j['notes'] as List?) ?? const []).map((e) => '$e').toList(),
       gaugesFound: (j['gauges_found'] as num?)?.toInt() ?? 1,
+      valueInWantedUnit: (j['value_in_wanted_unit'] as num?)?.toDouble(),
+      wantedUnit: j['wanted_unit'] as String? ?? '',
       debugImage: j['debug_image'] as String?,
       display: display,
     );
